@@ -1,0 +1,5 @@
+{
+  "buildCommand": "cd codelens && npm install && npm run build",
+  "outputDirectory": "codelens/dist",
+  "installCommand": "cd codelens && npm install"
+}

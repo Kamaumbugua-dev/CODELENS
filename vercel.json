@@ -1,4 +1,5 @@
 {
+  "framework": null,
   "installCommand": "npm --prefix codelens install",
   "buildCommand": "npm --prefix codelens run build",
   "outputDirectory": "codelens/dist",

@@ -3,8 +3,7 @@
   "installCommand": "npm --prefix codelens install",
   "buildCommand": "npm --prefix codelens run build",
   "outputDirectory": "codelens/dist",
-  "routes": [
-    { "handle": "filesystem" },
-    { "src": "/(.*)", "dest": "/index.html" }
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
   ]
 }

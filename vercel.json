@@ -1,6 +1,5 @@
 {
   "installCommand": "npm --prefix codelens install",
   "buildCommand": "npm --prefix codelens run build",
-  "outputDirectory": "codelens/dist",
-  "framework": "vite"
+  "outputDirectory": "codelens/dist"
 }

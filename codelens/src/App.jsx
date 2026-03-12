@@ -336,6 +336,9 @@ export default function CodeLens() {
               <span style={{ marginLeft: 12, fontSize: 12, color: "rgba(255,255,255,0.3)", fontFamily: "'JetBrains Mono', monospace" }}>
                 editor — paste your code below
               </span>
+              <span style={{ fontSize: 11, color: "rgba(0,224,255,0.5)", fontFamily: "'JetBrains Mono', monospace", background: "rgba(0,224,255,0.06)", padding: "2px 8px", borderRadius: 4, border: "1px solid rgba(0,224,255,0.15)" }}>
+                demo code loaded — click Analyze Code ⟩
+              </span>
               <span style={{ marginLeft: "auto", fontSize: 11, color: "rgba(255,255,255,0.2)", fontFamily: "'JetBrains Mono', monospace" }}>
                 {lines.length} lines
               </span>

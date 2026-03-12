@@ -24,7 +24,16 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-client = Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY", ""))
+_client: Optional[Anthropic] = None
+
+def get_client() -> Anthropic:
+    global _client
+    if _client is None:
+        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY is not configured")
+        _client = Anthropic(api_key=api_key)
+    return _client
 
 # ─── Models ───────────────────────────────────────────────────────────
 
@@ -180,7 +189,7 @@ async def analyze_code(request: AnalyzeRequest):
     prompt = build_analysis_prompt(request.code, language, request.filename)
 
     try:
-        response = client.messages.create(
+        response = get_client().messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=ANALYSIS_SYSTEM_PROMPT,

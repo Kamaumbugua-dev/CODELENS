@@ -11,7 +11,6 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from anthropic import Anthropic
 from groq import Groq
 
 app = FastAPI(title="CodeLens API", version="1.0.0")
@@ -24,15 +23,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_client: Optional[Anthropic] = None
+_client: Optional[Groq] = None
 
-def get_client() -> Anthropic:
+def get_client() -> Groq:
     global _client
     if _client is None:
-        api_key = os.environ.get("ANTHROPIC_API_KEY")
+        api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
-            raise HTTPException(status_code=503, detail="ANTHROPIC_API_KEY is not configured")
-        _client = Anthropic(api_key=api_key)
+            raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured")
+        _client = Groq(api_key=api_key)
     return _client
 
 # ─── Models ───────────────────────────────────────────────────────────
@@ -189,14 +188,16 @@ async def analyze_code(request: AnalyzeRequest):
     prompt = build_analysis_prompt(request.code, language, request.filename)
 
     try:
-        response = get_client().messages.create(
-            model="claude-sonnet-4-20250514",
+        response = get_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
             max_tokens=4096,
-            system=ANALYSIS_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
         )
 
-        raw_text = response.content[0].text.strip()
+        raw_text = response.choices[0].message.content.strip()
         # Clean potential markdown fences
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)

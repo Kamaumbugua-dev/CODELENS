@@ -55,13 +55,13 @@ def calculate_risk_score(transactions):
 const API_BASE = import.meta.env.VITE_API_BASE || "http://localhost:8000";
 
 const SEVERITY_CONFIG = {
-  critical: { color: "#FF3B5C", bg: "rgba(255,59,92,0.08)", border: "rgba(255,59,92,0.25)", icon: "⛔", label: "CRITICAL" },
-  warning: { color: "#FFB224", bg: "rgba(255,178,36,0.08)", border: "rgba(255,178,36,0.25)", icon: "⚠️", label: "WARNING" },
-  info: { color: "#38BDF8", bg: "rgba(56,189,248,0.08)", border: "rgba(56,189,248,0.25)", icon: "💡", label: "INFO" },
+  critical: { color: "#FF3B5C", bg: "rgba(255,59,92,0.08)", border: "rgba(255,59,92,0.25)", icon: "!", label: "CRITICAL" },
+  warning: { color: "#FFB224", bg: "rgba(255,178,36,0.08)", border: "rgba(255,178,36,0.25)", icon: "~", label: "WARNING" },
+  info: { color: "#38BDF8", bg: "rgba(56,189,248,0.08)", border: "rgba(56,189,248,0.25)", icon: "i", label: "INFO" },
 };
 
 const CATEGORY_ICONS = {
-  bug: "🐛", security: "🔒", performance: "⚡", code_smell: "👃", best_practice: "✨",
+  bug: "B", security: "S", performance: "P", code_smell: "C", best_practice: "+",
 };
 
 // ─── Mock Analysis (for demo without backend) ───────────────────────
@@ -168,7 +168,7 @@ function IssueCard({ issue, index, isExpanded, onToggle }) {
             </code>
           </div>
           <div style={{ fontSize: 12, color: "rgba(255,178,36,0.8)", fontStyle: "italic" }}>
-            ⚡ Impact: {issue.predicted_impact}
+            Impact: {issue.predicted_impact}
           </div>
         </div>
       )}
@@ -406,11 +406,11 @@ export default function CodeLens() {
                       <HealthGauge score={analysis.health_score} animate={animateGauge} />
                       <div style={{ flex: 1 }}>
                         <p style={{ fontSize: 13, color: "rgba(255,255,255,0.6)", lineHeight: 1.6, marginBottom: 12 }}>{analysis.summary}</p>
-                        <MetricBar label="Security" icon="🔒" count={analysis.metrics.security} total={analysis.total_issues} color="#FF3B5C" />
-                        <MetricBar label="Bugs" icon="🐛" count={analysis.metrics.bugs} total={analysis.total_issues} color="#FFB224" />
-                        <MetricBar label="Perf" icon="⚡" count={analysis.metrics.performance} total={analysis.total_issues} color="#A78BFA" />
-                        <MetricBar label="Smells" icon="👃" count={analysis.metrics.code_smells} total={analysis.total_issues} color="#38BDF8" />
-                        <MetricBar label="Practices" icon="✨" count={analysis.metrics.best_practices} total={analysis.total_issues} color="#22C55E" />
+                        <MetricBar label="Security" icon="S" count={analysis.metrics.security} total={analysis.total_issues} color="#FF3B5C" />
+                        <MetricBar label="Bugs" icon="B" count={analysis.metrics.bugs} total={analysis.total_issues} color="#FFB224" />
+                        <MetricBar label="Perf" icon="P" count={analysis.metrics.performance} total={analysis.total_issues} color="#A78BFA" />
+                        <MetricBar label="Smells" icon="C" count={analysis.metrics.code_smells} total={analysis.total_issues} color="#38BDF8" />
+                        <MetricBar label="Practices" icon="+" count={analysis.metrics.best_practices} total={analysis.total_issues} color="#22C55E" />
                       </div>
                     </div>
                   </div>
@@ -465,7 +465,7 @@ export default function CodeLens() {
                         padding: "12px 16px", marginBottom: 8, borderLeft: "3px solid #22C55E",
                         animation: `slideIn 0.4s ease ${idx * 0.08}s both`,
                       }}>
-                        <span style={{ fontSize: 14, marginRight: 8 }}>✅</span>
+                        <span style={{ fontSize: 14, marginRight: 8, color: "#22C55E", fontWeight: 700 }}>+</span>
                         <span style={{ fontSize: 13, color: "rgba(255,255,255,0.75)" }}>{note}</span>
                       </div>
                     ))}
@@ -484,7 +484,7 @@ export default function CodeLens() {
             borderRadius: 12, padding: "12px 20px", maxWidth: 500, backdropFilter: "blur(20px)",
             animation: "slideIn 0.3s ease",
           }}>
-            <p style={{ fontSize: 13, color: "#FFB224" }}>⚠️ {error}</p>
+            <p style={{ fontSize: 13, color: "#FFB224" }}>{error}</p>
           </div>
         )}
       </div>

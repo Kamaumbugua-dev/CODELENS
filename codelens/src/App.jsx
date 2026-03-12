@@ -14,9 +14,9 @@ def get_user(username):
     return result
 
 def process_payment(amount, card_number):
-    print(f"Processing payment of ${amount} with card {card_number}")
+    print(f"Processing payment of \${amount} with card {card_number}")
     log_file = open("/var/log/payments.log", "a")
-    log_file.write(f"Payment: {card_number} - ${amount}\\n")
+    log_file.write(f"Payment: {card_number} - \${amount}\\n")
     # Forgot to close the file handle
     
     if amount > 0:

@@ -1,6 +1,7 @@
 """
 CodeLens — Predictive Code Review Assistant
-Backend API powered by FastAPI + Claude API
+Backend API powered by FastAPI + Groq
+© AXON LATTICE LABS™
 """
 
 import os
@@ -10,10 +11,10 @@ import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, List, Any
 from groq import Groq
 
-app = FastAPI(title="CodeLens API", version="1.0.0")
+app = FastAPI(title="CodeLens API", version="2.0.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,6 +45,11 @@ class AnalyzeRequest(BaseModel):
 class GitHubRequest(BaseModel):
     repo_url: str
     file_path: Optional[str] = None
+
+class FixRequest(BaseModel):
+    code: str
+    language: str
+    issues: List[Any]
 
 # ─── Language Detection ───────────────────────────────────────────────
 
@@ -78,7 +84,7 @@ def detect_language(code: str, filename: Optional[str] = None) -> str:
         return max(scores, key=scores.get)
     return "unknown"
 
-# ─── Prompt Engineering ───────────────────────────────────────────────
+# ─── Prompts ──────────────────────────────────────────────────────────
 
 ANALYSIS_SYSTEM_PROMPT = """You are CodeLens, an elite AI code reviewer with deep expertise in software engineering, security, and performance optimization. You perform predictive code analysis — identifying not just current issues but patterns likely to cause future problems.
 
@@ -120,6 +126,14 @@ Rules:
 - Focus on issues that MATTER: real bugs, actual security risks, genuine performance concerns.
 - Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON."""
 
+FIX_SYSTEM_PROMPT = """You are an expert code security engineer. You will receive code with a list of issues. Fix ALL of them and return ONLY the corrected code.
+
+Rules:
+- Add inline comments prefixed with # FIX: (or // FIX: for JS/TS/Java) briefly explaining each change made.
+- Fix every single issue listed.
+- Do not remove functionality, only make it safe and correct.
+- Return RAW CODE ONLY. No markdown fences, no explanation, no preamble."""
+
 def build_analysis_prompt(code: str, language: str, filename: Optional[str] = None) -> str:
     file_context = f" (filename: {filename})" if filename else ""
     return f"""Analyze the following {language} code{file_context} for bugs, security vulnerabilities, performance issues, and code quality problems.
@@ -130,11 +144,24 @@ def build_analysis_prompt(code: str, language: str, filename: Optional[str] = No
 
 Return your analysis as the specified JSON structure. Be thorough and precise."""
 
+def build_fix_prompt(code: str, language: str, issues: List[Any]) -> str:
+    issues_list = "\n".join([
+        f"  - [Line {i.get('line_start', '?')}] [{i.get('severity', '').upper()}] {i.get('title', '')}: {i.get('suggestion', '')}"
+        for i in issues
+    ])
+    return f"""Fix ALL of the following issues in this {language} code:
+
+ISSUES TO FIX:
+{issues_list}
+
+ORIGINAL CODE:
+{code}
+
+Return the complete fixed code with inline FIX comments."""
+
 # ─── GitHub Integration ───────────────────────────────────────────────
 
 async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> dict:
-    """Fetch file content from a public GitHub repo."""
-    # Parse repo URL: https://github.com/owner/repo or https://github.com/owner/repo/blob/branch/path
     match = re.match(r"https?://github\.com/([^/]+)/([^/]+)(?:/blob/([^/]+)/(.+))?", repo_url)
     if not match:
         raise HTTPException(status_code=400, detail="Invalid GitHub URL format")
@@ -144,7 +171,6 @@ async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> d
     path = match.group(4) or file_path
 
     if not path:
-        # Fetch repo file tree
         api_url = f"https://api.github.com/repos/{owner}/{repo}/git/trees/{branch}?recursive=1"
         async with httpx.AsyncClient() as http_client:
             resp = await http_client.get(api_url, headers={"Accept": "application/vnd.github.v3+json"})
@@ -158,7 +184,6 @@ async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> d
             ]
             return {"type": "file_tree", "files": files[:50], "owner": owner, "repo": repo, "branch": branch}
 
-    # Fetch specific file
     raw_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}"
     async with httpx.AsyncClient() as http_client:
         resp = await http_client.get(raw_url)
@@ -170,7 +195,7 @@ async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> d
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "service": "CodeLens API"}
+    return {"status": "ok", "service": "CodeLens API", "version": "2.0.0"}
 
 @app.post("/analyze")
 async def analyze_code(request: AnalyzeRequest):
@@ -198,7 +223,6 @@ async def analyze_code(request: AnalyzeRequest):
         )
 
         raw_text = response.choices[0].message.content.strip()
-        # Clean potential markdown fences
         raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)
 
@@ -210,6 +234,35 @@ async def analyze_code(request: AnalyzeRequest):
         raise HTTPException(status_code=500, detail=f"Failed to parse analysis response: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+
+@app.post("/fix")
+async def fix_code(request: FixRequest):
+    """Generate fixed code that resolves all identified issues."""
+    if not request.code.strip():
+        raise HTTPException(status_code=400, detail="Code cannot be empty")
+
+    if not request.issues:
+        raise HTTPException(status_code=400, detail="No issues provided to fix")
+
+    prompt = build_fix_prompt(request.code, request.language, request.issues)
+
+    try:
+        response = get_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=4096,
+            messages=[
+                {"role": "system", "content": FIX_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+        )
+
+        fixed = response.choices[0].message.content.strip()
+        fixed = re.sub(r"^```(?:\w+)?\s*\n?", "", fixed)
+        fixed = re.sub(r"\n?```\s*$", "", fixed)
+        return {"fixed_code": fixed, "language": request.language, "issues_resolved": len(request.issues)}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fix failed: {str(e)}")
 
 @app.post("/github/fetch")
 async def fetch_from_github(request: GitHubRequest):

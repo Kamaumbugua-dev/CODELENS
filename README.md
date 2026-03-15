@@ -1,124 +1,211 @@
-# ⟨/⟩ CodeLens — Predictive Code Review Assistant
+# ⟨/⟩ CodeLens™ — Predictive Code Review Assistant
 
-**AI-powered code analysis that predicts bugs, security vulnerabilities, and performance bottlenecks before they reach production.**
+**AI-powered code analysis that detects security vulnerabilities, bugs, and performance bottlenecks — then rewrites your code to fix them.**
 
-![Theme: AI & Machine Learning](https://img.shields.io/badge/Theme-AI%20%26%20Machine%20Learning-blue)
-![Built with Claude](https://img.shields.io/badge/Built%20with-Claude%20API-purple)
+> A product of **AXON LATTICE LABS™** · Head: Steven K.
+
 ![FastAPI](https://img.shields.io/badge/Backend-FastAPI-green)
-![React](https://img.shields.io/badge/Frontend-React-cyan)
+![React](https://img.shields.io/badge/Frontend-React_19-cyan)
+![Groq](https://img.shields.io/badge/AI-Groq_LLM-orange)
+![Vercel](https://img.shields.io/badge/Frontend-Vercel-black)
+![Render](https://img.shields.io/badge/Backend-Render-blue)
 
 ---
 
-## 🎯 What It Does
+## What It Does
 
-CodeLens is a predictive code review tool that goes beyond linting. Paste your code or connect a GitHub repository, and CodeLens uses AI to perform multi-dimensional analysis:
+CodeLens is a predictive code review tool. Paste any code, and CodeLens uses a Groq-powered LLM to perform multi-dimensional analysis across 5 categories:
 
-- **🐛 Bug Detection** — Identifies logic errors, resource leaks, and edge cases
-- **🔒 Security Analysis** — Catches SQL injection, hardcoded secrets, unsafe eval(), and more
-- **⚡ Performance Prediction** — Flags O(n²) algorithms, memory leaks, and scaling bottlenecks
-- **👃 Code Smell Detection** — Spots anti-patterns and maintainability risks
-- **✨ Best Practices** — Recommends industry-standard improvements
+- **Bug Detection** — Logic errors, resource leaks, unclosed handles, division by zero
+- **Security Analysis** — SQL injection, hardcoded credentials, unsafe `eval()`, plaintext secrets
+- **Performance** — O(n²) algorithms, memory leaks, unbounded caches
+- **Code Smell Detection** — Anti-patterns and maintainability risks
+- **Best Practices** — Industry-standard improvements with concrete suggestions
 
-Every issue includes severity scoring, line-level annotations, a concrete fix suggestion, and a predicted impact statement explaining what could go wrong in production.
+Every issue includes severity scoring, **accurate line-level annotations** (line numbers are injected into the prompt so the LLM cannot hallucinate them), a concrete fix suggestion, and a predicted production impact statement.
 
-## 🏗️ Architecture
+After analysis, click **✦ Rework Code with AI Fixes** to have the LLM rewrite the entire file with all issues resolved and inline `# FIX:` comments explaining each change.
+
+---
+
+## Architecture
 
 ```
-┌─────────────────────────────────┐
-│   React Frontend (Tailwind)     │
-│   - Custom code editor          │
-│   - Health score gauge          │
-│   - Issue cards with filters    │
-└────────────┬────────────────────┘
-             │ REST API
-┌────────────▼────────────────────┐
-│   FastAPI Backend (Python)      │
-│   - /analyze endpoint           │
-│   - Language auto-detection     │
-│   - Prompt engineering layer    │
-│   - Structured JSON parsing     │
-└────────────┬────────────────────┘
-             │
-┌────────────▼────────────────────┐
-│   Claude API (Sonnet)           │
-│   - Multi-pass code review      │
-│   - Structured analysis output  │
-└─────────────────────────────────┘
+┌──────────────────────────────────────┐
+│   React 19 Frontend (Vercel)         │
+│   - 3-panel layout                   │
+│     · Code editor with line numbers  │
+│     · Analysis dashboard             │
+│     · Vulnerability scroll slides    │
+│   - Health score gauge (SVG)         │
+│   - Rework Code button → /fix        │
+│   - AXON LATTICE LABS™ branding      │
+└──────────────┬───────────────────────┘
+               │ REST API (CORS open)
+┌──────────────▼───────────────────────┐
+│   FastAPI Backend (Render)           │
+│   - POST /analyze                    │
+│   - POST /fix                        │
+│   - POST /github/fetch               │
+│   - POST /github/analyze             │
+│   - GET  /health                     │
+│   - Line-numbered prompt injection   │
+│   - Language auto-detection          │
+└──────────────┬───────────────────────┘
+               │
+┌──────────────▼───────────────────────┐
+│   Groq API — llama-3.3-70b           │
+│   - Structured JSON analysis         │
+│   - Full code rewrite with fixes     │
+└──────────────────────────────────────┘
 ```
 
-## 🚀 Quick Start
+---
+
+## Live Demo
+
+| Service  | URL |
+|----------|-----|
+| Frontend | https://codelens-ten.vercel.app |
+| Backend  | https://codelens-8i03.onrender.com |
+| Health   | https://codelens-8i03.onrender.com/health |
+
+> **Note:** Render's free tier sleeps after 15 min of inactivity. The first request after sleep takes ~30 seconds to wake up.
+
+---
+
+## Quick Start (Local)
 
 ### Backend
 
 ```bash
-cd codelens-backend
 pip install -r requirements.txt
 cp .env.example .env
-# Add your Anthropic API key to .env
+# Add your GROQ_API_KEY to .env
 python main.py
+# API runs at http://localhost:8000
 ```
-
-The API will be running at `http://localhost:8000`.
 
 ### Frontend
 
-The frontend is a React component (`codelens-app.jsx`). You can:
+```bash
+cd codelens
+npm install
+# Create codelens/.env.local with:
+# VITE_API_BASE=http://localhost:8000
+npm run dev
+```
 
-1. **Use it directly in Claude.ai** — it renders as an interactive artifact
-2. **Integrate into a React project** — import the component into any React app
-3. **Demo mode** — toggle "Demo mode" in the header to see the analysis without a backend
+---
 
-### API Endpoints
+## API Reference
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/analyze` | Analyze code for issues |
-| `POST` | `/github/fetch` | Fetch file tree from a GitHub repo |
-| `POST` | `/github/analyze` | Fetch and analyze a GitHub file |
-| `GET` | `/health` | Health check |
+### `POST /analyze`
 
-### Example API Call
+Analyze code for bugs, security issues, and performance problems.
 
 ```bash
-curl -X POST http://localhost:8000/analyze \
+curl -X POST https://codelens-8i03.onrender.com/analyze \
   -H "Content-Type: application/json" \
   -d '{"code": "def hello(): eval(input())", "language": "python"}'
 ```
 
-## 🧠 How It Works
+**Request**
+```json
+{ "code": "string", "language": "auto | python | javascript | ...", "filename": "optional" }
+```
 
-1. **Language Detection** — Automatically detects the programming language using file extension hints and regex pattern matching
-2. **Prompt Engineering** — Constructs a structured prompt that instructs the AI to analyze code across 5 dimensions (bugs, security, performance, code smells, best practices)
-3. **Structured Output** — The AI returns a JSON analysis with severity scores, line numbers, fix suggestions, and predicted production impact
-4. **Health Scoring** — Computes an overall health score (0-100) based on issue count and severity
-5. **Visual Presentation** — Issues are displayed with color-coded severity, expandable details, and line-level annotations in the editor
+**Response**
+```json
+{
+  "summary": "...",
+  "health_score": 28,
+  "language": "python",
+  "total_issues": 9,
+  "issues": [
+    {
+      "id": 1,
+      "severity": "critical",
+      "category": "security",
+      "title": "SQL Injection Vulnerability",
+      "description": "...",
+      "line_start": 7,
+      "line_end": 7,
+      "suggestion": "Use parameterized queries...",
+      "predicted_impact": "..."
+    }
+  ],
+  "metrics": { "bugs": 2, "security": 4, "performance": 1, "code_smells": 1, "best_practices": 1 },
+  "positive_notes": ["..."]
+}
+```
 
-## 🎨 Tech Stack
+### `POST /fix`
 
-- **Frontend**: React, Tailwind CSS, custom code editor, JetBrains Mono + Outfit fonts
-- **Backend**: FastAPI, Anthropic SDK, httpx
-- **AI**: Claude Sonnet via Anthropic API
-- **Deployment**: Vercel (frontend) + Railway/Render (backend)
+Rewrite code with all identified issues resolved.
 
-## 📐 Supported Languages
+```bash
+curl -X POST https://codelens-8i03.onrender.com/fix \
+  -H "Content-Type: application/json" \
+  -d '{"code": "...", "language": "python", "issues": [...]}'
+```
 
-Python, JavaScript, TypeScript, Java, Go, Rust, Ruby, PHP, C#, C++, C, Swift — with automatic detection.
+**Response**
+```json
+{ "fixed_code": "...", "language": "python", "issues_resolved": 9 }
+```
 
-## 🗺️ Roadmap
+### `POST /github/fetch` · `POST /github/analyze`
 
-- [ ] VS Code extension
-- [ ] GitHub Actions integration (CI/CD pipeline)
-- [ ] Multi-file repository analysis
-- [ ] Custom rule engine
-- [ ] Team dashboards with trend tracking
-- [ ] IDE-native inline annotations
+Fetch or analyze files from a public GitHub repository.
 
-## 🏆 Built For
-
-Hackathon submission — Theme: **Artificial Intelligence & Machine Learning**
-
-Built by **AxonLattice Labs** — Intelligent Data Infrastructure
+```json
+{ "repo_url": "https://github.com/owner/repo", "file_path": "src/main.py" }
+```
 
 ---
 
-*CodeLens: See your code's future before it ships.*
+## How Line Accuracy Works
+
+A common LLM failure mode is hallucinating line numbers. CodeLens prevents this by injecting line numbers directly into the prompt before sending to Groq:
+
+```
+ 1 | import sqlite3
+ 2 | import os
+ 3 |
+ 4 | def get_user(username):
+ 5 |     conn = sqlite3.connect("users.db")
+...
+```
+
+The model is also told the total line count and constrained to only reference lines that exist. This eliminates fabricated line references.
+
+---
+
+## Tech Stack
+
+| Layer | Technology |
+|-------|------------|
+| Frontend | React 19, Vite, Space Grotesk + JetBrains Mono fonts |
+| Backend | FastAPI, Groq SDK, httpx, pydantic |
+| AI Model | Groq — `llama-3.3-70b-versatile` |
+| Frontend Hosting | Vercel (auto-deploy from `master`) |
+| Backend Hosting | Render (auto-deploy from `master`) |
+
+## Supported Languages
+
+Python, JavaScript, TypeScript, Java, Go, Rust, Ruby, PHP, C#, C++, C, Swift — with automatic detection via regex pattern matching and file extension hints.
+
+## Roadmap
+
+- [ ] VS Code extension with inline annotations
+- [ ] GitHub Actions integration for CI/CD pipelines
+- [ ] Multi-file repository analysis
+- [ ] Custom rule engine
+- [ ] Team dashboards with trend tracking
+
+---
+
+**AXON LATTICE LABS™ · CodeLens v2.0**
+
+*See your code's future before it ships.*

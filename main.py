@@ -134,15 +134,24 @@ Rules:
 - Do not remove functionality, only make it safe and correct.
 - Return RAW CODE ONLY. No markdown fences, no explanation, no preamble."""
 
+def add_line_numbers(code: str) -> str:
+    lines = code.splitlines()
+    width = len(str(len(lines)))
+    return "\n".join(f"{str(i+1).rjust(width)} | {line}" for i, line in enumerate(lines))
+
 def build_analysis_prompt(code: str, language: str, filename: Optional[str] = None) -> str:
     file_context = f" (filename: {filename})" if filename else ""
+    numbered = add_line_numbers(code)
+    total_lines = len(code.splitlines())
     return f"""Analyze the following {language} code{file_context} for bugs, security vulnerabilities, performance issues, and code quality problems.
 
+The code has {total_lines} lines total. Each line is prefixed with its exact line number. You MUST only reference line numbers that actually exist (1 to {total_lines}).
+
 ```{language}
-{code}
+{numbered}
 ```
 
-Return your analysis as the specified JSON structure. Be thorough and precise."""
+Return your analysis as the specified JSON structure. Be thorough and precise. Line numbers in your response must exactly match the numbered lines above."""
 
 def build_fix_prompt(code: str, language: str, issues: List[Any]) -> str:
     issues_list = "\n".join([

@@ -66,7 +66,7 @@ After analysis, click **✦ Rework Code with AI Fixes** to have the LLM rewrite 
 
 | Service  | URL |
 |----------|-----|
-| Frontend | https://codelens-ten.vercel.app |
+| Frontend | https://codelens-new.vercel.app |
 | Backend  | https://codelens-8i03.onrender.com |
 | Health   | https://codelens-8i03.onrender.com/health |
 

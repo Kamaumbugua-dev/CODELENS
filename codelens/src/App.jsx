@@ -422,6 +422,15 @@ export default function CodeLens() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const isSignedIn = !!authToken;
 
+  // ── Navigation ────────────────────────────────────────────────────
+  const [activePage, setActivePage]       = useState("home");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // ── History ───────────────────────────────────────────────────────
+  const [analysisHistory, setAnalysisHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem("cl_history") || "[]"); } catch { return []; }
+  });
+
   const googleLogin = useGoogleLogin({
     onSuccess: async (tr) => {
       try {
@@ -486,8 +495,13 @@ export default function CodeLens() {
         body:JSON.stringify({ code, language:"auto" }),
       });
       if (!resp.ok) { const e = await resp.json().catch(() => ({})); throw new Error(e.detail || `Server error: ${resp.status}`); }
-      setAnalysis(await resp.json());
+      const result = await resp.json();
+      setAnalysis(result);
       setTimeout(() => setAnimateGauge(true), 100);
+      const entry = { id: Date.now(), date: new Date().toISOString(), language: result.language || "unknown", health_score: result.health_score, total_issues: result.total_issues, code_snippet: code.slice(0, 120) };
+      const next = [entry, ...analysisHistory].slice(0, 30);
+      setAnalysisHistory(next);
+      localStorage.setItem("cl_history", JSON.stringify(next));
     } catch (e) {
       if (e.message.includes("Failed to fetch") || e.message.includes("NetworkError")) {
         setUseMock(true); setAnalysis(MOCK_ANALYSIS); setTimeout(() => setAnimateGauge(true), 100);
@@ -834,6 +848,399 @@ export default function CodeLens() {
     </div>
   );
 
+  // ─── Home Page ────────────────────────────────────────────────────
+  const renderHomePage = () => (
+    <div className="page-scroll" style={{ background:"transparent" }}>
+      {/* Hero */}
+      <section className="page-section" style={{ minHeight:"88vh", display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center", padding:isMobile ? "60px 24px 48px" : "100px 48px 72px", textAlign:"center", position:"relative" }}>
+        <div style={{ display:"inline-flex", alignItems:"center", gap:8, padding:"6px 16px", borderRadius:30, background:"rgba(0,212,255,0.06)", border:"1px solid rgba(0,212,255,0.18)", marginBottom:28, backdropFilter:"blur(20px)" }}>
+          <span style={{ width:6, height:6, borderRadius:"50%", background:T.cyan, boxShadow:`0 0 10px ${T.cyan}`, animation:"pulse 2s ease-in-out infinite", display:"inline-block" }}/>
+          <span style={{ fontSize:11, color:"rgba(0,212,255,0.7)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2.5 }}>POWERED BY GROQ AI</span>
+        </div>
+        <h1 style={{ fontSize:isMobile ? 36 : isTablet ? 52 : 72, fontWeight:900, fontFamily:"'Outfit',sans-serif", lineHeight:1.05, letterSpacing:-2, marginBottom:24, maxWidth:900 }}>
+          <span style={{ background:"linear-gradient(135deg,#fff 0%,rgba(255,255,255,0.7) 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Detect Code Vulnerabilities</span>
+          <br/>
+          <span style={{ background:"linear-gradient(135deg,#00D4FF 0%,#8B5CF6 50%,#FF2D78 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Before They Hit Production</span>
+        </h1>
+        <p style={{ fontSize:isMobile ? 15 : 19, color:"rgba(255,255,255,0.42)", lineHeight:1.8, maxWidth:620, marginBottom:40, fontWeight:400 }}>
+          CodeLens uses AI to scan your code for security vulnerabilities, bugs, and performance issues — giving you instant fixes and a full health score in seconds.
+        </p>
+        <div style={{ display:"flex", gap:14, flexWrap:"wrap", justifyContent:"center", marginBottom:64 }}>
+          <button className="analyze-btn" onClick={() => setActivePage("analyze")} style={{
+            padding:"15px 36px", borderRadius:18, border:"none", cursor:"pointer",
+            background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff",
+            fontSize:15, fontWeight:800, fontFamily:"'Outfit',sans-serif",
+            boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 40px rgba(0,212,255,0.35)", letterSpacing:0.3,
+          }}>Start Analyzing Free →</button>
+          <button onClick={() => setActivePage("services")} style={{
+            padding:"15px 36px", borderRadius:18, cursor:"pointer",
+            background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.12)",
+            color:"rgba(255,255,255,0.7)", fontSize:15, fontWeight:700, fontFamily:"'Outfit',sans-serif",
+            backdropFilter:"blur(20px)", transition:"all 0.2s",
+          }}
+            onMouseEnter={e => { e.currentTarget.style.background="rgba(255,255,255,0.08)"; e.currentTarget.style.color="#fff"; }}
+            onMouseLeave={e => { e.currentTarget.style.background="rgba(255,255,255,0.04)"; e.currentTarget.style.color="rgba(255,255,255,0.7)"; }}>
+            View Plans
+          </button>
+        </div>
+        {/* Stats bar */}
+        <div style={{ display:"flex", gap:isMobile ? 24 : 48, flexWrap:"wrap", justifyContent:"center" }}>
+          {[
+            { val:"10+",    label:"Vulnerability Types Detected" },
+            { val:"< 5s",   label:"Average Scan Time" },
+            { val:"3",      label:"Languages Supported" },
+            { val:"100%",   label:"Free to Start" },
+          ].map(({ val, label }) => (
+            <div key={label} style={{ textAlign:"center" }}>
+              <div style={{ fontSize:isMobile ? 26 : 34, fontWeight:900, fontFamily:"'Outfit',sans-serif", background:"linear-gradient(135deg,#00D4FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent", lineHeight:1 }}>{val}</div>
+              <div style={{ fontSize:10, color:"rgba(255,255,255,0.25)", marginTop:4, fontFamily:"'JetBrains Mono',monospace", letterSpacing:1 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Why We Built It */}
+      <section style={{ padding:isMobile ? "56px 24px" : "80px 64px", maxWidth:1100, margin:"0 auto" }}>
+        <div style={{ textAlign:"center", marginBottom:isMobile ? 40 : 60 }}>
+          <span style={{ fontSize:10, color:T.violet, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3, textTransform:"uppercase" }}>OUR STORY</span>
+          <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", marginTop:12, letterSpacing:-1, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Why We Built CodeLens</h2>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:20 }}>
+          {[
+            { icon:"🔓", title:"Security Breaches Are Expensive", body:"The average data breach now costs $4.45M. Most originate from vulnerabilities that static analysis could have caught. We set out to make that analysis instant and accessible." },
+            { icon:"⏳", title:"Developers Lose Hours to Debugging", body:"Engineers spend up to 30% of their time finding and fixing bugs. CodeLens cuts that time dramatically by surfacing issues the moment code is written." },
+            { icon:"🧠", title:"Reviews Miss Critical Issues", body:"Manual code review is subjective and rushed. We wanted an unbiased, always-on AI reviewer that applies consistent security and performance standards every time." },
+            { icon:"🚀", title:"Democratizing Code Quality", body:"Enterprise-grade code analysis was previously only available to large teams with expensive tooling. We built CodeLens to give every developer — solo or team — the same power." },
+          ].map(({ icon, title, body }) => (
+            <div key={title} className="card-hover" style={{
+              padding:"28px 28px", borderRadius:20,
+              background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))",
+              border:"1px solid rgba(255,255,255,0.07)", backdropFilter:"blur(30px)",
+              boxShadow:"0 8px 30px rgba(0,0,0,0.3)",
+            }}>
+              <div style={{ fontSize:28, marginBottom:14 }}>{icon}</div>
+              <h3 style={{ fontSize:17, fontWeight:800, fontFamily:"'Outfit',sans-serif", marginBottom:10, color:"rgba(255,255,255,0.9)" }}>{title}</h3>
+              <p style={{ fontSize:13, color:"rgba(255,255,255,0.38)", lineHeight:1.8 }}>{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Who It Serves */}
+      <section style={{ padding:isMobile ? "56px 24px" : "80px 64px", background:"rgba(255,255,255,0.015)", borderTop:"1px solid rgba(255,255,255,0.05)", borderBottom:"1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ maxWidth:1100, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:isMobile ? 40 : 60 }}>
+            <span style={{ fontSize:10, color:T.cyan, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>WHO WE SERVE</span>
+            <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", marginTop:12, letterSpacing:-1, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Built for Every Developer</h2>
+          </div>
+          <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr 1fr" : isTablet ? "repeat(3,1fr)" : "repeat(5,1fr)", gap:16 }}>
+            {[
+              { icon:"👨‍💻", title:"Solo Devs",        body:"Ship with confidence knowing your code is clean and secure before deployment." },
+              { icon:"🏢", title:"Startup Teams",    body:"Move fast without breaking things. Catch critical issues early in your sprint cycle." },
+              { icon:"🔐", title:"Security Teams",   body:"Augment your security reviews with AI-powered vulnerability detection across every PR." },
+              { icon:"🎓", title:"CS Students",      body:"Learn secure coding practices and understand why certain patterns are dangerous." },
+              { icon:"🌐", title:"Open Source",      body:"Maintain code quality across contributor commits without slowing down your community." },
+            ].map(({ icon, title, body }) => (
+              <div key={title} className="card-hover" style={{
+                padding:"22px 18px", borderRadius:18, textAlign:"center",
+                background:"linear-gradient(145deg,rgba(0,212,255,0.04),rgba(139,92,246,0.04))",
+                border:"1px solid rgba(0,212,255,0.1)", backdropFilter:"blur(20px)",
+                boxShadow:"0 4px 20px rgba(0,0,0,0.25)",
+              }}>
+                <div style={{ fontSize:30, marginBottom:12 }}>{icon}</div>
+                <h4 style={{ fontSize:13, fontWeight:800, fontFamily:"'Outfit',sans-serif", marginBottom:8, color:"rgba(255,255,255,0.85)" }}>{title}</h4>
+                <p style={{ fontSize:11, color:"rgba(255,255,255,0.3)", lineHeight:1.7 }}>{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Benefits */}
+      <section style={{ padding:isMobile ? "56px 24px" : "80px 64px", maxWidth:1100, margin:"0 auto" }}>
+        <div style={{ textAlign:"center", marginBottom:isMobile ? 40 : 60 }}>
+          <span style={{ fontSize:10, color:T.emerald, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>KEY BENEFITS</span>
+          <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", marginTop:12, letterSpacing:-1, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Everything You Need</h2>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : isTablet ? "1fr 1fr" : "repeat(3,1fr)", gap:20 }}>
+          {[
+            { color:T.pink,    icon:"🔐", title:"Security Scanning",      body:"Detects SQL injection, hardcoded secrets, unsafe eval(), XSS vulnerabilities, and 7+ more critical security patterns." },
+            { color:T.amber,   icon:"🐛", title:"Bug Detection",           body:"Identifies resource leaks, unclosed connections, division by zero, and other common runtime bugs before they crash production." },
+            { color:T.violet,  icon:"⚡", title:"Performance Analysis",    body:"Flags O(n²) algorithms, memory leaks, unbounded caches, and inefficient patterns that will slow your app at scale." },
+            { color:T.cyan,    icon:"📊", title:"Health Score",            body:"Every scan produces a 0–100 health score giving you an instant, objective measure of your code's overall quality." },
+            { color:T.emerald, icon:"✦",  title:"AI Fix Suggestions",      body:"Don't just find problems — fix them. CodeLens generates AI-powered code rewrites that resolve all detected issues at once." },
+            { color:"#F472B6", icon:"📱", title:"Any Device, Any Screen",  body:"Fully responsive across mobile, tablet, and desktop. Scan code wherever you are, on any device." },
+          ].map(({ color, icon, title, body }) => (
+            <div key={title} className="card-hover" style={{
+              padding:"28px", borderRadius:20,
+              background:`linear-gradient(145deg,${color}08,rgba(3,8,18,0.8))`,
+              border:`1px solid ${color}1a`, backdropFilter:"blur(30px)",
+              boxShadow:"0 8px 30px rgba(0,0,0,0.35)",
+            }}>
+              <div style={{ width:44, height:44, borderRadius:14, background:`${color}15`, border:`1px solid ${color}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, marginBottom:16, boxShadow:`0 4px 16px ${color}20` }}>{icon}</div>
+              <h3 style={{ fontSize:16, fontWeight:800, fontFamily:"'Outfit',sans-serif", marginBottom:10, color:"rgba(255,255,255,0.9)" }}>{title}</h3>
+              <p style={{ fontSize:12, color:"rgba(255,255,255,0.38)", lineHeight:1.8 }}>{body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* Bottom CTA */}
+      <section style={{ padding:isMobile ? "56px 24px" : "80px 48px", textAlign:"center", borderTop:"1px solid rgba(255,255,255,0.05)" }}>
+        <h2 style={{ fontSize:isMobile ? 26 : 40, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-1, marginBottom:18, background:"linear-gradient(135deg,#00D4FF,#8B5CF6,#FF2D78)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Ready to Write Safer Code?</h2>
+        <p style={{ fontSize:15, color:"rgba(255,255,255,0.3)", marginBottom:32, maxWidth:460, margin:"0 auto 32px" }}>Join developers using CodeLens to ship with confidence. Free to start — no credit card required.</p>
+        <button className="analyze-btn" onClick={() => { if (!isSignedIn) setShowAuthModal(true); else setActivePage("analyze"); }} style={{
+          padding:"15px 44px", borderRadius:18, border:"none", cursor:"pointer",
+          background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff",
+          fontSize:16, fontWeight:800, fontFamily:"'Outfit',sans-serif",
+          boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 50px rgba(0,212,255,0.4)",
+        }}>{isSignedIn ? "Go to Analyzer →" : "Get Started Free →"}</button>
+        <div style={{ marginTop:16, fontSize:10, color:"rgba(255,255,255,0.12)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2 }}>AXON LATTICE LABS™ · CODELENS v2.0</div>
+      </section>
+    </div>
+  );
+
+  // ─── History Page ─────────────────────────────────────────────────
+  const renderHistoryPage = () => (
+    <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
+      <div style={{ maxWidth:860, margin:"0 auto" }}>
+        <div style={{ marginBottom:32 }}>
+          <span style={{ fontSize:10, color:T.cyan, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>YOUR SCANS</span>
+          <h2 style={{ fontSize:isMobile ? 26 : 36, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-0.8, marginTop:8, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Analysis History</h2>
+        </div>
+        {analysisHistory.length === 0 ? (
+          <div style={{ textAlign:"center", padding:"72px 24px", background:"rgba(255,255,255,0.02)", border:"1px solid rgba(255,255,255,0.06)", borderRadius:24 }}>
+            <div style={{ fontSize:48, marginBottom:16 }}>⏱</div>
+            <h3 style={{ fontSize:18, fontWeight:800, fontFamily:"'Outfit',sans-serif", color:"rgba(255,255,255,0.5)", marginBottom:10 }}>No analyses yet</h3>
+            <p style={{ fontSize:13, color:"rgba(255,255,255,0.22)", marginBottom:24 }}>Your scan history will appear here after your first analysis.</p>
+            <button className="analyze-btn" onClick={() => setActivePage("analyze")} style={{
+              padding:"12px 28px", borderRadius:14, border:"none", cursor:"pointer",
+              background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff",
+              fontSize:13, fontWeight:800, fontFamily:"'Outfit',sans-serif",
+              boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.3)",
+            }}>Analyze Your First Code →</button>
+          </div>
+        ) : (
+          <>
+            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16 }}>
+              <span style={{ fontSize:12, color:"rgba(255,255,255,0.25)", fontFamily:"'JetBrains Mono',monospace" }}>{analysisHistory.length} scan{analysisHistory.length !== 1 ? "s" : ""} recorded</span>
+              <button onClick={() => { setAnalysisHistory([]); localStorage.removeItem("cl_history"); }} style={{
+                padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,45,120,0.2)",
+                background:"rgba(255,45,120,0.06)", color:"rgba(255,45,120,0.6)", cursor:"pointer",
+                fontSize:10, fontFamily:"'JetBrains Mono',monospace",
+              }}>Clear All</button>
+            </div>
+            <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+              {analysisHistory.map((entry) => {
+                const score = entry.health_score;
+                const col = score >= 80 ? T.emerald : score >= 60 ? "#84CC16" : score >= 40 ? T.amber : T.pink;
+                const d = new Date(entry.date);
+                return (
+                  <div key={entry.id} className="card-hover" style={{
+                    padding:"18px 20px", borderRadius:18,
+                    background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))",
+                    border:"1px solid rgba(255,255,255,0.07)", backdropFilter:"blur(20px)",
+                    boxShadow:"0 4px 20px rgba(0,0,0,0.3)", cursor:"pointer",
+                  }} onClick={() => setActivePage("analyze")}>
+                    <div style={{ display:"flex", alignItems:"center", gap:14, flexWrap:"wrap" }}>
+                      <div style={{ width:46, height:46, borderRadius:14, background:`${col}15`, border:`1px solid ${col}25`, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                        <span style={{ fontSize:18, fontWeight:900, color:col, fontFamily:"'JetBrains Mono',monospace" }}>{score}</span>
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:4, flexWrap:"wrap" }}>
+                          <span style={{ fontSize:11, fontWeight:700, color:col, background:`${col}14`, padding:"2px 8px", borderRadius:6, fontFamily:"'JetBrains Mono',monospace" }}>{entry.language?.toUpperCase() || "UNKNOWN"}</span>
+                          <span style={{ fontSize:11, color:"rgba(255,255,255,0.22)", fontFamily:"'JetBrains Mono',monospace" }}>{entry.total_issues} issue{entry.total_issues !== 1 ? "s" : ""}</span>
+                        </div>
+                        <code style={{ fontSize:11, color:"rgba(255,255,255,0.3)", fontFamily:"'JetBrains Mono',monospace", display:"block", overflow:"hidden", textOverflow:"ellipsis", whiteSpace:"nowrap" }}>{entry.code_snippet}…</code>
+                      </div>
+                      <div style={{ textAlign:"right", flexShrink:0 }}>
+                        <div style={{ fontSize:11, color:"rgba(255,255,255,0.25)", fontFamily:"'JetBrains Mono',monospace" }}>{d.toLocaleDateString()}</div>
+                        <div style={{ fontSize:10, color:"rgba(255,255,255,0.12)", fontFamily:"'JetBrains Mono',monospace" }}>{d.toLocaleTimeString([], { hour:"2-digit", minute:"2-digit" })}</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+
+  // ─── About Page ───────────────────────────────────────────────────
+  const renderAboutPage = () => (
+    <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
+      <div style={{ maxWidth:860, margin:"0 auto" }}>
+        <div style={{ marginBottom:40, textAlign:"center" }}>
+          <span style={{ fontSize:10, color:T.violet, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>OUR MISSION</span>
+          <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-1, marginTop:12, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>About Axon Lattice Labs</h2>
+          <p style={{ fontSize:15, color:"rgba(255,255,255,0.35)", lineHeight:1.9, maxWidth:620, margin:"18px auto 0" }}>We build intelligent developer tools that help engineers write better, safer code — without slowing them down.</p>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:20, marginBottom:32 }}>
+          {[
+            { color:T.cyan,    title:"Our Mission",  body:"To democratize enterprise-grade code intelligence. Every developer — regardless of team size or budget — deserves an AI-powered co-reviewer that never misses a vulnerability." },
+            { color:T.violet,  title:"Our Vision",   body:"A world where code quality issues are caught in seconds, not discovered in production incidents. We're building the tools that make that future a reality." },
+            { color:T.emerald, title:"Our Values",   body:"Transparency in how our AI makes decisions. Simplicity in the interfaces we build. Reliability in the results we deliver. Security first, always." },
+            { color:T.amber,   title:"Our Stack",    body:"Groq LLM inference for lightning-fast analysis. FastAPI backend on Render. React + Vite frontend on Vercel. OAuth 2.0 with GitHub and Google." },
+          ].map(({ color, title, body }) => (
+            <div key={title} className="card-hover" style={{
+              padding:"28px", borderRadius:20,
+              background:`linear-gradient(145deg,${color}06,rgba(3,8,18,0.8))`,
+              border:`1px solid ${color}18`, backdropFilter:"blur(30px)",
+              boxShadow:"0 8px 30px rgba(0,0,0,0.3)",
+            }}>
+              <h3 style={{ fontSize:16, fontWeight:800, fontFamily:"'Outfit',sans-serif", color, marginBottom:12 }}>{title}</h3>
+              <p style={{ fontSize:13, color:"rgba(255,255,255,0.38)", lineHeight:1.85 }}>{body}</p>
+            </div>
+          ))}
+        </div>
+        {/* Team */}
+        <div style={{ padding:"32px", borderRadius:24, background:"linear-gradient(145deg,rgba(139,92,246,0.07),rgba(3,8,18,0.9))", border:"1px solid rgba(139,92,246,0.15)", textAlign:"center" }}>
+          <div style={{ width:72, height:72, borderRadius:22, background:"linear-gradient(135deg,rgba(0,212,255,0.2),rgba(139,92,246,0.2))", border:"1px solid rgba(0,212,255,0.25)", display:"flex", alignItems:"center", justifyContent:"center", margin:"0 auto 16px", fontSize:28, boxShadow:"0 8px 30px rgba(0,212,255,0.15)" }}>⟨/⟩</div>
+          <h3 style={{ fontSize:20, fontWeight:900, fontFamily:"'Outfit',sans-serif", color:"rgba(255,255,255,0.9)", marginBottom:4 }}>Steven K.</h3>
+          <span style={{ fontSize:11, color:T.cyan, fontFamily:"'JetBrains Mono',monospace", letterSpacing:2 }}>FOUNDER · HEAD · AXON LATTICE LABS</span>
+          <p style={{ fontSize:13, color:"rgba(255,255,255,0.3)", lineHeight:1.8, maxWidth:480, margin:"16px auto 0" }}>Building at the intersection of AI and developer tooling. Passionate about making secure, high-quality code accessible to every engineer on the planet.</p>
+        </div>
+      </div>
+    </div>
+  );
+
+  // ─── Services Page ────────────────────────────────────────────────
+  const renderServicesPage = () => (
+    <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
+      <div style={{ maxWidth:900, margin:"0 auto" }}>
+        <div style={{ textAlign:"center", marginBottom:isMobile ? 36 : 56 }}>
+          <span style={{ fontSize:10, color:T.amber, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>PRICING</span>
+          <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-1, marginTop:12, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Simple, Transparent Plans</h2>
+          <p style={{ fontSize:15, color:"rgba(255,255,255,0.3)", marginTop:12 }}>Start free. Upgrade when you need more power.</p>
+        </div>
+        <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:24, alignItems:"start" }}>
+          {/* Basic */}
+          <div className="card-hover" style={{ padding:"36px 32px", borderRadius:24, background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))", border:"1px solid rgba(255,255,255,0.09)", backdropFilter:"blur(30px)", boxShadow:"0 8px 30px rgba(0,0,0,0.35)" }}>
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontSize:12, color:"rgba(255,255,255,0.3)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, marginBottom:10 }}>BASIC</div>
+              <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
+                <span style={{ fontSize:48, fontWeight:900, fontFamily:"'Outfit',sans-serif", color:"#fff" }}>$0</span>
+                <span style={{ fontSize:14, color:"rgba(255,255,255,0.3)" }}>/month</span>
+              </div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)", marginTop:8 }}>Free forever. No credit card required.</div>
+            </div>
+            <button className="analyze-btn" onClick={() => { if (!isSignedIn) setShowAuthModal(true); else setActivePage("analyze"); }} style={{
+              width:"100%", padding:"13px", borderRadius:14, border:"1px solid rgba(255,255,255,0.1)", cursor:"pointer",
+              background:"rgba(255,255,255,0.05)", color:"rgba(255,255,255,0.75)",
+              fontSize:14, fontWeight:700, fontFamily:"'Outfit',sans-serif", marginBottom:28,
+            }}>Get Started Free</button>
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {[
+                "Up to 20 scans per day",
+                "Security vulnerability detection",
+                "Bug and resource leak analysis",
+                "Performance issue flagging",
+                "Health score (0–100)",
+                "AI-powered fix suggestions",
+                "Analysis history (last 30 scans)",
+                "GitHub & Google sign-in",
+              ].map(f => (
+                <div key={f} style={{ display:"flex", alignItems:"center", gap:10, fontSize:13, color:"rgba(255,255,255,0.55)" }}>
+                  <span style={{ color:T.emerald, fontSize:14, flexShrink:0 }}>✓</span>{f}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Pro */}
+          <div className="card-hover" style={{ padding:"36px 32px", borderRadius:24, background:"linear-gradient(145deg,rgba(0,212,255,0.07),rgba(139,92,246,0.07))", border:"1px solid rgba(0,212,255,0.2)", backdropFilter:"blur(30px)", boxShadow:"0 8px 40px rgba(0,212,255,0.12), 0 8px 30px rgba(0,0,0,0.4)", position:"relative", overflow:"hidden" }}>
+            <div style={{ position:"absolute", top:16, right:16, padding:"4px 12px", borderRadius:20, background:"linear-gradient(135deg,#00D4FF,#7C3AED)", fontSize:10, fontWeight:800, color:"#fff", fontFamily:"'JetBrains Mono',monospace", letterSpacing:1.5 }}>POPULAR</div>
+            <div style={{ marginBottom:24 }}>
+              <div style={{ fontSize:12, color:T.cyan, fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, marginBottom:10 }}>PRO</div>
+              <div style={{ display:"flex", alignItems:"baseline", gap:4 }}>
+                <span style={{ fontSize:48, fontWeight:900, fontFamily:"'Outfit',sans-serif", background:"linear-gradient(135deg,#00D4FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>$12</span>
+                <span style={{ fontSize:14, color:"rgba(255,255,255,0.3)" }}>/month</span>
+              </div>
+              <div style={{ fontSize:13, color:"rgba(255,255,255,0.3)", marginTop:8 }}>Everything in Basic, plus:</div>
+            </div>
+            <button className="analyze-btn" onClick={() => setActivePage("contact")} style={{
+              width:"100%", padding:"13px", borderRadius:14, border:"none", cursor:"pointer",
+              background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff",
+              fontSize:14, fontWeight:800, fontFamily:"'Outfit',sans-serif", marginBottom:28,
+              boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.3)",
+            }}>Contact Us to Upgrade</button>
+            <div style={{ display:"flex", flexDirection:"column", gap:12 }}>
+              {[
+                "Unlimited scans",
+                "Priority AI processing (faster results)",
+                "Full analysis history (unlimited)",
+                "Team workspace (up to 10 seats)",
+                "API access for CI/CD integration",
+                "Custom language & framework rules",
+                "Slack & GitHub PR integration",
+                "Dedicated support channel",
+                "Early access to new features",
+              ].map(f => (
+                <div key={f} style={{ display:"flex", alignItems:"center", gap:10, fontSize:13, color:"rgba(255,255,255,0.65)" }}>
+                  <span style={{ color:T.cyan, fontSize:14, flexShrink:0 }}>✦</span>{f}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <p style={{ textAlign:"center", marginTop:28, fontSize:12, color:"rgba(255,255,255,0.18)", fontFamily:"'JetBrains Mono',monospace" }}>All plans subject to fair-use policy · Prices in USD · Pro features coming soon</p>
+      </div>
+    </div>
+  );
+
+  // ─── Contact Page ─────────────────────────────────────────────────
+  const renderContactPage = () => {
+    return (
+      <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
+        <div style={{ maxWidth:700, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:40 }}>
+            <span style={{ fontSize:10, color:T.pink, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>GET IN TOUCH</span>
+            <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-1, marginTop:12, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Contact Us</h2>
+            <p style={{ fontSize:15, color:"rgba(255,255,255,0.3)", marginTop:12, lineHeight:1.7 }}>Have questions, feedback, or want to upgrade to Pro? We'd love to hear from you.</p>
+          </div>
+          {/* Contact cards */}
+          <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:16, marginBottom:32 }}>
+            {[
+              { icon:"✉", label:"Email",   value:"hello@axonlattice.dev",     color:T.cyan,    href:"mailto:hello@axonlattice.dev" },
+              { icon:"🐙", label:"GitHub",  value:"github.com/axonlattice",    color:"#fff",    href:"https://github.com" },
+            ].map(({ icon, label, value, color, href }) => (
+              <a key={label} href={href} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
+                <div className="card-hover" style={{
+                  padding:"22px 24px", borderRadius:18,
+                  background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))",
+                  border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(20px)",
+                  boxShadow:"0 4px 20px rgba(0,0,0,0.3)", display:"flex", alignItems:"center", gap:16,
+                }}>
+                  <div style={{ width:44, height:44, borderRadius:13, background:`${color}18`, border:`1px solid ${color}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{icon}</div>
+                  <div>
+                    <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, marginBottom:4 }}>{label.toUpperCase()}</div>
+                    <div style={{ fontSize:13, fontWeight:600, color, fontFamily:"'JetBrains Mono',monospace" }}>{value}</div>
+                  </div>
+                </div>
+              </a>
+            ))}
+          </div>
+          {/* Message form */}
+          <div style={{ padding:"32px", borderRadius:24, background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))", border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(30px)" }}>
+            <h3 style={{ fontSize:16, fontWeight:800, fontFamily:"'Outfit',sans-serif", color:"rgba(255,255,255,0.8)", marginBottom:20 }}>Send a Message</h3>
+            <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+              <input placeholder="Your name" style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none" }}
+                onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
+              <input placeholder="Your email" style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none" }}
+                onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
+              <textarea placeholder="Your message…" rows={5} style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none", resize:"vertical" }}
+                onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
+              <button style={{ padding:"13px", borderRadius:14, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff", fontSize:14, fontWeight:800, fontFamily:"'Outfit',sans-serif", boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.25)" }}
+                onClick={() => setError("Message sent! We'll be in touch soon.")}>Send Message →</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ─────────────────────────────────────────────────────────────────────
   return (
     <>
@@ -880,6 +1287,18 @@ export default function CodeLens() {
           box-shadow:0 2px 0 rgba(0,0,0,0.35),0 4px 20px rgba(0,212,255,0.25) !important;
         }
         .sign-in-btn:hover { background:rgba(255,255,255,0.1) !important; transform:translateY(-1px); }
+        .nav-link { background:none; border:none; cursor:pointer; padding:8px 14px; border-radius:10px; font-size:13px; font-weight:600; font-family:'Space Grotesk',sans-serif; transition:all 0.2s; color:rgba(255,255,255,0.45); letter-spacing:0.1px; position:relative; }
+        .nav-link:hover { color:rgba(255,255,255,0.9); background:rgba(255,255,255,0.05); }
+        .nav-link.active { color:#00D4FF; background:rgba(0,212,255,0.08); }
+        .nav-link.active::after { content:''; position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:20px; height:2px; background:#00D4FF; border-radius:2px; box-shadow:0 0 8px rgba(0,212,255,0.6); }
+        .page-section { animation:fadeUp 0.5s ease both; }
+        .card-hover { transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s; }
+        .card-hover:hover { transform:translateY(-6px); box-shadow:0 20px 50px rgba(0,0,0,0.5) !important; }
+        .hamburger { background:none; border:none; cursor:pointer; padding:6px; border-radius:8px; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; transition:all 0.2s; }
+        .hamburger:hover { background:rgba(255,255,255,0.06); }
+        .page-scroll { overflow-y:auto; flex:1; }
+        .page-scroll::-webkit-scrollbar { width:4px; }
+        .page-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.07); border-radius:3px; }
       `}</style>
 
       <div style={{ height:"100dvh", background:T.bg, color:"#fff",
@@ -907,175 +1326,199 @@ export default function CodeLens() {
             background:"radial-gradient(ellipse 80% 80% at 50% 50%,transparent 40%,rgba(2,6,12,0.6) 100%)" }}/>
         </div>
 
-        {/* ── Header ─────────────────────────────────────────── */}
+        {/* ── NavBar ─────────────────────────────────────────── */}
         <header style={{
-          flexShrink:0, position:"relative", zIndex:100, height:HEADER_H,
-          background:"rgba(3,8,18,0.72)",
+          flexShrink:0, position:"relative", zIndex:100,
+          background:"rgba(3,8,18,0.82)",
           backdropFilter:"blur(60px) saturate(200%)", WebkitBackdropFilter:"blur(60px) saturate(200%)",
           borderBottom:"1px solid rgba(255,255,255,0.07)",
-          padding:`0 ${isMobile ? 14 : 28}px`,
-          display:"flex", alignItems:"center", justifyContent:"space-between",
-          boxShadow:"0 1px 0 rgba(255,255,255,0.05), 0 4px 30px rgba(0,0,0,0.5), inset 0 -1px 0 rgba(0,0,0,0.3)",
+          boxShadow:"0 1px 0 rgba(255,255,255,0.05), 0 4px 30px rgba(0,0,0,0.5)",
         }}>
-          {/* Brand */}
-          <div style={{ display:"flex", alignItems:"center", gap:isMobile ? 10 : 14 }}>
-            <div style={{
-              width:isMobile ? 34 : 40, height:isMobile ? 34 : 40, borderRadius:isMobile ? 11 : 13,
-              background:"linear-gradient(135deg,rgba(0,212,255,0.15),rgba(139,92,246,0.15))",
-              border:"1px solid rgba(0,212,255,0.22)", backdropFilter:"blur(20px)",
-              display:"flex", alignItems:"center", justifyContent:"center",
-              boxShadow:`0 4px 20px rgba(0,212,255,0.12), inset 0 1px 0 rgba(0,212,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.2)`,
-              transition:"transform 0.3s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.3s",
-              cursor:"default",
-            }}
-              onMouseEnter={e => { e.currentTarget.style.transform="rotate(-8deg) scale(1.1)"; e.currentTarget.style.boxShadow=`0 8px 30px rgba(0,212,255,0.25), inset 0 1px 0 rgba(0,212,255,0.3)`; }}
-              onMouseLeave={e => { e.currentTarget.style.transform=""; e.currentTarget.style.boxShadow=`0 4px 20px rgba(0,212,255,0.12), inset 0 1px 0 rgba(0,212,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.2)`; }}>
-              <span style={{ fontSize:isMobile ? 13 : 16, fontWeight:900,
-                background:"linear-gradient(135deg,#00D4FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>⟨/⟩</span>
-            </div>
-            <div>
-              <div style={{ display:"flex", alignItems:"baseline", gap:6 }}>
-                <h1 style={{ fontSize:isMobile ? 17 : 21, fontWeight:900, letterSpacing:"-0.6px",
-                  fontFamily:"'Outfit',sans-serif",
-                  background:"linear-gradient(135deg,#00D4FF 0%,#8B5CF6 60%,#FF2D78 100%)",
-                  WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>CodeLens</h1>
-                <span style={{ fontSize:7, color:"rgba(0,212,255,0.5)",
-                  fontFamily:"'JetBrains Mono',monospace", letterSpacing:1.5,
-                  border:"1px solid rgba(0,212,255,0.2)", padding:"1px 5px", borderRadius:4 }}>™</span>
+          <div style={{ padding:`0 ${isMobile ? 14 : 28}px`, height:HEADER_H, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
+            {/* Brand */}
+            <button onClick={() => { setActivePage("home"); setMobileMenuOpen(false); }} style={{ display:"flex", alignItems:"center", gap:isMobile ? 10 : 12, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+              <div style={{
+                width:isMobile ? 34 : 38, height:isMobile ? 34 : 38, borderRadius:isMobile ? 11 : 12,
+                background:"linear-gradient(135deg,rgba(0,212,255,0.15),rgba(139,92,246,0.15))",
+                border:"1px solid rgba(0,212,255,0.22)", backdropFilter:"blur(20px)",
+                display:"flex", alignItems:"center", justifyContent:"center",
+                boxShadow:"0 4px 20px rgba(0,212,255,0.12), inset 0 1px 0 rgba(0,212,255,0.2)",
+                transition:"transform 0.3s cubic-bezier(0.34,1.56,0.64,1)",
+              }}
+                onMouseEnter={e => e.currentTarget.style.transform="rotate(-8deg) scale(1.1)"}
+                onMouseLeave={e => e.currentTarget.style.transform=""}>
+                <span style={{ fontSize:isMobile ? 13 : 15, fontWeight:900, background:"linear-gradient(135deg,#00D4FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>⟨/⟩</span>
               </div>
-              {!isMobile && (
-                <div style={{ display:"flex", alignItems:"center", gap:5, marginTop:2 }}>
-                  <span style={{ fontSize:8, color:"rgba(255,255,255,0.15)", letterSpacing:3,
-                    fontFamily:"'JetBrains Mono',monospace", textTransform:"uppercase" }}>AXON LATTICE LABS</span>
-                  <span style={{ width:3, height:3, borderRadius:"50%", background:"rgba(0,212,255,0.3)", display:"inline-block" }}/>
-                  <span style={{ fontSize:8, color:"rgba(255,255,255,0.12)", fontFamily:"'JetBrains Mono',monospace" }}>Predictive Code Intelligence</span>
+              <div style={{ textAlign:"left" }}>
+                <div style={{ display:"flex", alignItems:"baseline", gap:5 }}>
+                  <span style={{ fontSize:isMobile ? 16 : 19, fontWeight:900, letterSpacing:"-0.5px", fontFamily:"'Outfit',sans-serif", background:"linear-gradient(135deg,#00D4FF 0%,#8B5CF6 60%,#FF2D78 100%)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>CodeLens</span>
+                  <span style={{ fontSize:7, color:"rgba(0,212,255,0.5)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:1.5, border:"1px solid rgba(0,212,255,0.2)", padding:"1px 4px", borderRadius:4 }}>™</span>
                 </div>
+                {!isMobile && <div style={{ fontSize:8, color:"rgba(255,255,255,0.14)", letterSpacing:2.5, fontFamily:"'JetBrains Mono',monospace", textTransform:"uppercase", marginTop:1 }}>AXON LATTICE LABS</div>}
+              </div>
+            </button>
+
+            {/* Desktop nav links */}
+            {!isMobile && (
+              <nav style={{ display:"flex", alignItems:"center", gap:2 }}>
+                {[
+                  { key:"home",     label:"Home" },
+                  { key:"analyze",  label:"Analyze Code" },
+                  { key:"history",  label:"History" },
+                  { key:"about",    label:"About" },
+                  { key:"services", label:"Services" },
+                  { key:"contact",  label:"Contact" },
+                ].map(({ key, label }) => (
+                  <button key={key} onClick={() => setActivePage(key)} className={`nav-link${activePage === key ? " active" : ""}`}>{label}</button>
+                ))}
+              </nav>
+            )}
+
+            {/* Right controls */}
+            <div style={{ display:"flex", alignItems:"center", gap:isMobile ? 8 : 10 }}>
+              {activePage === "analyze" && isSignedIn && !isMobile && (
+                <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()} style={{
+                  padding:"8px 20px", borderRadius:22, border:"none", cursor:loading ? "wait" : "pointer",
+                  background: loading ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)",
+                  color: loading ? "rgba(255,255,255,0.25)" : "#fff", fontSize:13, fontWeight:800,
+                  fontFamily:"'Outfit',sans-serif", animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
+                  transition:"all 0.2s", boxShadow: loading ? "none" : "0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.3)",
+                }}>{loading ? "Scanning..." : "Analyze →"}</button>
+              )}
+              {!isSignedIn ? (
+                <button className="sign-in-btn" onClick={() => setShowAuthModal(true)} style={{
+                  padding:isMobile ? "7px 13px" : "8px 18px", borderRadius:22,
+                  border:"1px solid rgba(0,212,255,0.28)", cursor:"pointer",
+                  background:"rgba(0,212,255,0.06)", backdropFilter:"blur(20px)",
+                  color:T.cyan, fontSize:isMobile ? 12 : 13, fontWeight:700,
+                  fontFamily:"'Outfit',sans-serif", transition:"all 0.2s",
+                  boxShadow:"inset 0 1px 0 rgba(0,212,255,0.12)" }}>Sign In →</button>
+              ) : (
+                <UserAvatar user={authUser} onSignOut={handleSignOut} isMobile={isMobile}/>
+              )}
+              {/* Mobile hamburger */}
+              {isMobile && (
+                <button className="hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
+                  {[0,1,2].map(i => (
+                    <div key={i} style={{ width:20, height:2, borderRadius:2, background: mobileMenuOpen && i===1 ? "transparent" : "rgba(255,255,255,0.6)",
+                      transition:"all 0.25s",
+                      transform: mobileMenuOpen ? (i===0 ? "rotate(45deg) translate(5px,5px)" : i===2 ? "rotate(-45deg) translate(5px,-5px)" : "none") : "none",
+                    }}/>
+                  ))}
+                </button>
               )}
             </div>
           </div>
 
-          {/* Center shimmer */}
-          {!isMobile && (
-            <div style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:3 }}>
-              <span style={{ fontSize:9, letterSpacing:4, fontFamily:"'JetBrains Mono',monospace", textTransform:"uppercase",
-                background:"linear-gradient(90deg,rgba(0,212,255,0.4),rgba(139,92,246,0.6),rgba(255,45,120,0.4),rgba(0,212,255,0.4))",
-                backgroundSize:"200% auto", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent",
-                animation:"shimmerText 4s linear infinite" }}>AXON LATTICE LABS™</span>
-              <span style={{ fontSize:8, color:"rgba(0,212,255,0.28)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:1 }}>Head · Steven K.</span>
+          {/* Mobile dropdown menu */}
+          {isMobile && mobileMenuOpen && (
+            <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", padding:"10px 14px 16px",
+              display:"flex", flexDirection:"column", gap:4, animation:"fadeUp 0.2s ease" }}>
+              {[
+                { key:"home",     label:"Home",         icon:"⌂" },
+                { key:"analyze",  label:"Analyze Code", icon:"⟨/⟩" },
+                { key:"history",  label:"History",      icon:"⏱" },
+                { key:"about",    label:"About",        icon:"◈" },
+                { key:"services", label:"Services",     icon:"◇" },
+                { key:"contact",  label:"Contact",      icon:"✉" },
+              ].map(({ key, label, icon }) => (
+                <button key={key} onClick={() => { setActivePage(key); setMobileMenuOpen(false); }} style={{
+                  display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderRadius:12,
+                  background: activePage === key ? "rgba(0,212,255,0.08)" : "rgba(255,255,255,0.025)",
+                  border:`1px solid ${activePage === key ? "rgba(0,212,255,0.22)" : "rgba(255,255,255,0.06)"}`,
+                  color: activePage === key ? T.cyan : "rgba(255,255,255,0.65)",
+                  fontSize:14, fontWeight:600, fontFamily:"'Space Grotesk',sans-serif",
+                  cursor:"pointer", transition:"all 0.2s", textAlign:"left",
+                }}>
+                  <span style={{ fontSize:16, width:22, textAlign:"center" }}>{icon}</span>
+                  {label}
+                  {activePage === key && <span style={{ marginLeft:"auto", fontSize:10, color:T.cyan }}>●</span>}
+                </button>
+              ))}
             </div>
           )}
-
-          {/* Controls */}
-          <div style={{ display:"flex", alignItems:"center", gap:isMobile ? 8 : 12 }}>
-            {reworkDone && !isMobile && (
-              <div style={{ display:"flex", alignItems:"center", gap:7, padding:"5px 12px", borderRadius:24,
-                background:"rgba(16,185,129,0.08)", border:"1px solid rgba(16,185,129,0.2)",
-                backdropFilter:"blur(16px)" }}>
-                <span style={{ color:T.emerald, fontSize:11 }}>✓</span>
-                <span style={{ fontSize:10, color:T.emerald, fontFamily:"'JetBrains Mono',monospace" }}>Rework applied</span>
-              </div>
-            )}
-            {!isMobile && (
-              <label style={{ display:"flex", alignItems:"center", gap:5, cursor:"pointer",
-                fontSize:10, color:"rgba(255,255,255,0.2)", fontFamily:"'JetBrains Mono',monospace" }}>
-                <input type="checkbox" checked={useMock} onChange={e => setUseMock(e.target.checked)}
-                  style={{ accentColor:T.cyan }}/>
-                demo
-              </label>
-            )}
-            {!isSignedIn ? (
-              <button className="sign-in-btn" onClick={() => setShowAuthModal(true)} style={{
-                padding:isMobile ? "7px 14px" : "8px 20px", borderRadius:24,
-                border:"1px solid rgba(0,212,255,0.28)", cursor:"pointer",
-                background:"rgba(0,212,255,0.06)",
-                backdropFilter:"blur(20px)", WebkitBackdropFilter:"blur(20px)",
-                color:T.cyan, fontSize:isMobile ? 12 : 13, fontWeight:700,
-                fontFamily:"'Outfit',sans-serif", transition:"all 0.2s",
-                boxShadow:"inset 0 1px 0 rgba(0,212,255,0.12), 0 4px 16px rgba(0,0,0,0.3)" }}>Sign In →</button>
-            ) : (
-              <>
-                {!isMobile && (
-                  <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()} style={{
-                    padding:"8px 22px", borderRadius:24, border:"none",
-                    cursor:loading ? "wait" : "pointer",
-                    background: loading ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)",
-                    color: loading ? "rgba(255,255,255,0.25)" : "#fff",
-                    fontSize:13, fontWeight:800, fontFamily:"'Outfit',sans-serif",
-                    animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
-                    transition:"all 0.2s",
-                    boxShadow: loading ? "none" : "0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.3)",
-                  }}>{loading ? "Scanning..." : "Analyze Code →"}</button>
-                )}
-                <UserAvatar user={authUser} onSignOut={handleSignOut} isMobile={isMobile}/>
-              </>
-            )}
-          </div>
         </header>
 
         {/* ── Main Content ───────────────────────────────────── */}
         <div style={{ flex:1, display:"flex", overflow:"hidden", position:"relative", zIndex:1, minHeight:0 }}>
 
-          {/* DESKTOP ≥ 1024px */}
-          {!isMobile && !isTablet && (
-            <>
-              <div style={{ flex:(analysis||loading) ? "0 0 42%" : "1", transition:"flex 0.5s cubic-bezier(0.4,0,0.2,1)",
-                borderRight:"1px solid rgba(255,255,255,0.06)", display:"flex", flexDirection:"column", ...GLASS }}>
-                {renderEditor()}
-              </div>
-              {(analysis||loading) && (
-                <div style={{ flex:"0 0 33%", display:"flex", flexDirection:"column",
-                  borderRight:"1px solid rgba(255,255,255,0.06)", animation:"fadeUp 0.5s ease", ...GLASS }}>
-                  {renderAnalysis()}
-                </div>
-              )}
-              {analysis && (
-                <div style={{ flex:"0 0 25%", display:"flex", flexDirection:"column",
-                  animation:"fadeUp 0.6s ease 0.1s both", ...GLASS }}>
-                  {renderSlides()}
-                </div>
-              )}
-              {!analysis && !loading && renderEmpty()}
-            </>
+          {/* Non-analyze pages */}
+          {activePage !== "analyze" && (
+            <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden" }}>
+              {activePage === "home"     && renderHomePage()}
+              {activePage === "history"  && renderHistoryPage()}
+              {activePage === "about"    && renderAboutPage()}
+              {activePage === "services" && renderServicesPage()}
+              {activePage === "contact"  && renderContactPage()}
+            </div>
           )}
 
-          {/* TABLET 640–1023px */}
-          {isTablet && (
+          {/* Analyze page */}
+          {activePage === "analyze" && (
             <>
-              <div style={{ flex:"0 0 50%", borderRight:"1px solid rgba(255,255,255,0.06)",
-                display:"flex", flexDirection:"column", ...GLASS }}>
-                {renderEditor()}
-              </div>
-              <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", ...GLASS }}>
-                {(analysis||loading) ? (
-                  <>
-                    <div style={{ flex: analysis ? "0 0 58%" : "1", display:"flex", flexDirection:"column",
-                      overflow:"hidden", borderBottom: analysis ? "1px solid rgba(255,255,255,0.06)" : "none",
-                      animation:"fadeUp 0.5s ease" }}>
+              {/* DESKTOP ≥ 1024px */}
+              {!isMobile && !isTablet && (
+                <>
+                  <div style={{ flex:(analysis||loading) ? "0 0 42%" : "1", transition:"flex 0.5s cubic-bezier(0.4,0,0.2,1)",
+                    borderRight:"1px solid rgba(255,255,255,0.06)", display:"flex", flexDirection:"column", ...GLASS }}>
+                    {renderEditor()}
+                  </div>
+                  {(analysis||loading) && (
+                    <div style={{ flex:"0 0 33%", display:"flex", flexDirection:"column",
+                      borderRight:"1px solid rgba(255,255,255,0.06)", animation:"fadeUp 0.5s ease", ...GLASS }}>
                       {renderAnalysis()}
                     </div>
-                    {analysis && (
-                      <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", animation:"fadeUp 0.5s ease 0.1s both" }}>
-                        {renderSlides()}
-                      </div>
-                    )}
-                  </>
-                ) : renderEmpty()}
-              </div>
-            </>
-          )}
+                  )}
+                  {analysis && (
+                    <div style={{ flex:"0 0 25%", display:"flex", flexDirection:"column",
+                      animation:"fadeUp 0.6s ease 0.1s both", ...GLASS }}>
+                      {renderSlides()}
+                    </div>
+                  )}
+                  {!analysis && !loading && renderEmpty()}
+                </>
+              )}
 
-          {/* MOBILE < 640px */}
-          {isMobile && (
-            <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", ...GLASS }}>
-              {mobilePanel === "editor"   && renderEditor()}
-              {mobilePanel === "analysis" && ((analysis||loading) ? renderAnalysis() : renderEmpty())}
-              {mobilePanel === "slides"   && (analysis ? renderSlides() : renderEmpty())}
-            </div>
+              {/* TABLET 640–1023px */}
+              {isTablet && (
+                <>
+                  <div style={{ flex:"0 0 50%", borderRight:"1px solid rgba(255,255,255,0.06)",
+                    display:"flex", flexDirection:"column", ...GLASS }}>
+                    {renderEditor()}
+                  </div>
+                  <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", ...GLASS }}>
+                    {(analysis||loading) ? (
+                      <>
+                        <div style={{ flex: analysis ? "0 0 58%" : "1", display:"flex", flexDirection:"column",
+                          overflow:"hidden", borderBottom: analysis ? "1px solid rgba(255,255,255,0.06)" : "none",
+                          animation:"fadeUp 0.5s ease" }}>
+                          {renderAnalysis()}
+                        </div>
+                        {analysis && (
+                          <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", animation:"fadeUp 0.5s ease 0.1s both" }}>
+                            {renderSlides()}
+                          </div>
+                        )}
+                      </>
+                    ) : renderEmpty()}
+                  </div>
+                </>
+              )}
+
+              {/* MOBILE < 640px */}
+              {isMobile && (
+                <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", ...GLASS }}>
+                  {mobilePanel === "editor"   && renderEditor()}
+                  {mobilePanel === "analysis" && ((analysis||loading) ? renderAnalysis() : renderEmpty())}
+                  {mobilePanel === "slides"   && (analysis ? renderSlides() : renderEmpty())}
+                </div>
+              )}
+            </>
           )}
         </div>
 
-        {/* ── Mobile Bottom Bar ──────────────────────────────── */}
-        {isMobile && (
+        {/* ── Mobile Bottom Bar (analyze page only) ──────────── */}
+        {isMobile && activePage === "analyze" && (
           <div style={{
             flexShrink:0, zIndex:200,
             background:"rgba(2,6,14,0.88)",

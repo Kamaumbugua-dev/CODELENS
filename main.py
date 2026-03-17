@@ -7,14 +7,36 @@ Backend API powered by FastAPI + Groq
 import os
 import json
 import re
+import time
+import logging
+import uuid
 import httpx
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from groq import Groq
 
+# ─── Logging ──────────────────────────────────────────────────────────
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='{"time":"%(asctime)s","level":"%(levelname)s","event":%(message)s}',
+    datefmt="%Y-%m-%dT%H:%M:%SZ",
+)
+logger = logging.getLogger("codelens")
+
+# ─── Rate Limiter ─────────────────────────────────────────────────────
+
+limiter = Limiter(key_func=get_remote_address, default_limits=["100/hour"])
+
 app = FastAPI(title="CodeLens API", version="2.0.0")
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +45,34 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ─── Request Logging Middleware ───────────────────────────────────────
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    request_id = str(uuid.uuid4())[:8]
+    start = time.time()
+    ip = request.client.host if request.client else "unknown"
+
+    logger.info(
+        f'"request_id":"{request_id}","method":"{request.method}",'
+        f'"path":"{request.url.path}","ip":"{ip}"'
+    )
+
+    response = await call_next(request)
+    duration_ms = round((time.time() - start) * 1000)
+
+    level = logging.WARNING if response.status_code >= 400 else logging.INFO
+    logger.log(
+        level,
+        f'"request_id":"{request_id}","status":{response.status_code},'
+        f'"duration_ms":{duration_ms},"ip":"{ip}","path":"{request.url.path}"'
+    )
+
+    response.headers["X-Request-ID"] = request_id
+    return response
+
+# ─── Groq Client ──────────────────────────────────────────────────────
 
 _client: Optional[Groq] = None
 
@@ -54,12 +104,12 @@ class FixRequest(BaseModel):
 # ─── Language Detection ───────────────────────────────────────────────
 
 LANGUAGE_HINTS = {
-    "python": [r"def \w+\(", r"import \w+", r"class \w+:", r"print\(", r"self\."],
+    "python":     [r"def \w+\(", r"import \w+", r"class \w+:", r"print\(", r"self\."],
     "javascript": [r"const \w+", r"let \w+", r"function \w+", r"=>", r"console\.log"],
     "typescript": [r"interface \w+", r"type \w+", r": string", r": number", r"<\w+>"],
-    "java": [r"public class", r"public static void", r"System\.out", r"import java\."],
-    "go": [r"func \w+\(", r"package \w+", r"fmt\.", r"import \("],
-    "rust": [r"fn \w+\(", r"let mut", r"impl \w+", r"use \w+::", r"pub fn"],
+    "java":       [r"public class", r"public static void", r"System\.out", r"import java\."],
+    "go":         [r"func \w+\(", r"package \w+", r"fmt\.", r"import \("],
+    "rust":       [r"fn \w+\(", r"let mut", r"impl \w+", r"use \w+::", r"pub fn"],
 }
 
 def detect_language(code: str, filename: Optional[str] = None) -> str:
@@ -207,19 +257,26 @@ async def health_check():
     return {"status": "ok", "service": "CodeLens API", "version": "2.0.0"}
 
 @app.post("/analyze")
-async def analyze_code(request: AnalyzeRequest):
+@limiter.limit("10/minute;50/hour")
+async def analyze_code(request: Request, body: AnalyzeRequest):
     """Analyze code for bugs, security issues, and performance problems."""
-    if not request.code.strip():
+    ip = request.client.host if request.client else "unknown"
+
+    if not body.code.strip():
         raise HTTPException(status_code=400, detail="Code cannot be empty")
 
-    if len(request.code) > 50000:
+    if len(body.code) > 50000:
+        logger.warning(f'"event":"oversized_request","ip":"{ip}","size":{len(body.code)}')
         raise HTTPException(status_code=400, detail="Code exceeds maximum length (50,000 characters)")
 
-    language = request.language
+    language = body.language
     if language == "auto":
-        language = detect_language(request.code, request.filename)
+        language = detect_language(body.code, body.filename)
 
-    prompt = build_analysis_prompt(request.code, language, request.filename)
+    lines = len(body.code.splitlines())
+    logger.info(f'"event":"analyze_start","ip":"{ip}","language":"{language}","lines":{lines}')
+
+    prompt = build_analysis_prompt(body.code, language, body.filename)
 
     try:
         response = get_client().chat.completions.create(
@@ -237,23 +294,35 @@ async def analyze_code(request: AnalyzeRequest):
 
         analysis = json.loads(raw_text)
         analysis["language"] = language
+
+        logger.info(
+            f'"event":"analyze_complete","ip":"{ip}","language":"{language}",'
+            f'"health_score":{analysis.get("health_score")},"issues":{analysis.get("total_issues")}'
+        )
         return analysis
 
     except json.JSONDecodeError as e:
+        logger.error(f'"event":"parse_error","ip":"{ip}","error":"{str(e)}"')
         raise HTTPException(status_code=500, detail=f"Failed to parse analysis response: {str(e)}")
     except Exception as e:
+        logger.error(f'"event":"analyze_error","ip":"{ip}","error":"{str(e)}"')
         raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 @app.post("/fix")
-async def fix_code(request: FixRequest):
+@limiter.limit("5/minute;20/hour")
+async def fix_code(request: Request, body: FixRequest):
     """Generate fixed code that resolves all identified issues."""
-    if not request.code.strip():
+    ip = request.client.host if request.client else "unknown"
+
+    if not body.code.strip():
         raise HTTPException(status_code=400, detail="Code cannot be empty")
 
-    if not request.issues:
+    if not body.issues:
         raise HTTPException(status_code=400, detail="No issues provided to fix")
 
-    prompt = build_fix_prompt(request.code, request.language, request.issues)
+    logger.info(f'"event":"fix_start","ip":"{ip}","language":"{body.language}","issue_count":{len(body.issues)}')
+
+    prompt = build_fix_prompt(body.code, body.language, body.issues)
 
     try:
         response = get_client().chat.completions.create(
@@ -268,33 +337,43 @@ async def fix_code(request: FixRequest):
         fixed = response.choices[0].message.content.strip()
         fixed = re.sub(r"^```(?:\w+)?\s*\n?", "", fixed)
         fixed = re.sub(r"\n?```\s*$", "", fixed)
-        return {"fixed_code": fixed, "language": request.language, "issues_resolved": len(request.issues)}
+
+        logger.info(f'"event":"fix_complete","ip":"{ip}","issues_resolved":{len(body.issues)}')
+        return {"fixed_code": fixed, "language": body.language, "issues_resolved": len(body.issues)}
 
     except Exception as e:
+        logger.error(f'"event":"fix_error","ip":"{ip}","error":"{str(e)}"')
         raise HTTPException(status_code=500, detail=f"Fix failed: {str(e)}")
 
 @app.post("/github/fetch")
-async def fetch_from_github(request: GitHubRequest):
+@limiter.limit("20/minute")
+async def fetch_from_github(request: Request, body: GitHubRequest):
     """Fetch files from a public GitHub repository."""
-    return await fetch_github_file(request.repo_url, request.file_path)
+    return await fetch_github_file(body.repo_url, body.file_path)
 
 @app.post("/github/analyze")
-async def analyze_github_file(request: GitHubRequest):
+@limiter.limit("10/minute;30/hour")
+async def analyze_github_file(request: Request, body: GitHubRequest):
     """Fetch and analyze a file from GitHub."""
-    if not request.file_path:
+    ip = request.client.host if request.client else "unknown"
+
+    if not body.file_path:
         raise HTTPException(status_code=400, detail="file_path is required for analysis")
 
-    result = await fetch_github_file(request.repo_url, request.file_path)
+    result = await fetch_github_file(body.repo_url, body.file_path)
     if result["type"] != "file_content":
         raise HTTPException(status_code=400, detail="Expected file content")
+
+    logger.info(f'"event":"github_analyze","ip":"{ip}","repo":"{body.repo_url}","file":"{body.file_path}"')
 
     analyze_req = AnalyzeRequest(
         code=result["content"],
         language="auto",
         filename=result["path"],
     )
-    analysis = await analyze_code(analyze_req)
-    analysis["source"] = {"repo": request.repo_url, "file": result["path"]}
+    # Pass a mock request object for the rate-limited inner call
+    analysis = await analyze_code(request, analyze_req)
+    analysis["source"] = {"repo": body.repo_url, "file": result["path"]}
     return analysis
 
 

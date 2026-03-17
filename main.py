@@ -11,6 +11,7 @@ import time
 import logging
 import uuid
 import httpx
+from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -22,7 +23,6 @@ from pydantic import BaseModel
 from typing import Optional, List, Any
 from groq import Groq
 from jose import jwt, JWTError
-from jose import jwk as jose_jwk
 
 # ─── Logging ──────────────────────────────────────────────────────────
 
@@ -88,46 +88,108 @@ def get_client() -> Groq:
         _client = Groq(api_key=api_key)
     return _client
 
-# ─── Auth (Clerk JWT via JWKS) ────────────────────────────────────────
+# ─── Auth (OAuth 2.0 + JWT) ───────────────────────────────────────────
 
 _http_bearer = HTTPBearer(auto_error=False)
-_jwks_cache: Optional[dict] = None
 
-async def _get_jwks() -> Optional[dict]:
-    global _jwks_cache
-    if _jwks_cache is None:
-        url = os.environ.get("CLERK_JWKS_URL")
-        if not url:
-            return None
-        async with httpx.AsyncClient() as c:
-            resp = await c.get(url, timeout=10)
-            _jwks_cache = resp.json()
-    return _jwks_cache
+def _issue_token(payload: dict) -> str:
+    secret = os.environ.get("JWT_SECRET_KEY", "dev-secret-change-in-prod")
+    data = {**payload, "exp": datetime.utcnow() + timedelta(hours=24)}
+    return jwt.encode(data, secret, algorithm="HS256")
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(_http_bearer),
 ) -> dict:
-    jwks = await _get_jwks()
-    # If CLERK_JWKS_URL is not set, auth is disabled (local dev)
-    if jwks is None:
+    secret = os.environ.get("JWT_SECRET_KEY")
+    # If JWT_SECRET_KEY is not set, auth is disabled (local dev)
+    if not secret:
         return {"sub": "anonymous"}
-
     if not credentials:
         raise HTTPException(status_code=401, detail="Authentication required")
-
-    token = credentials.credentials
     try:
-        header = jwt.get_unverified_header(token)
-        kid = header.get("kid")
-        key_data = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
-        if not key_data:
-            _jwks_cache = None  # force refresh next request
-            raise HTTPException(status_code=401, detail="Unknown signing key")
-        public_key = jose_jwk.construct(key_data)
-        payload = jwt.decode(token, public_key, algorithms=["RS256"], options={"verify_aud": False})
+        payload = jwt.decode(credentials.credentials, secret, algorithms=["HS256"])
         return payload
     except JWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+
+# ─── OAuth Endpoints ──────────────────────────────────────────────────
+
+class GoogleAuthRequest(BaseModel):
+    credential: str  # Google OAuth access token
+
+class GitHubAuthRequest(BaseModel):
+    code: str
+
+@app.post("/auth/google")
+async def auth_google(body: GoogleAuthRequest):
+    """Exchange a Google OAuth access token for a CodeLens JWT."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                "https://www.googleapis.com/oauth2/v3/userinfo",
+                headers={"Authorization": f"Bearer {body.credential}"},
+                timeout=10,
+            )
+            if resp.status_code != 200:
+                raise HTTPException(status_code=401, detail="Invalid Google access token")
+            info = resp.json()
+        token = _issue_token({
+            "sub": info.get("sub"),
+            "email": info.get("email"),
+            "name": info.get("name"),
+            "picture": info.get("picture"),
+            "provider": "google",
+        })
+        return {"token": token, "user": {"name": info.get("name"), "email": info.get("email"), "picture": info.get("picture")}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Google auth failed: {e}")
+
+@app.post("/auth/github")
+async def auth_github(body: GitHubAuthRequest):
+    """Exchange a GitHub OAuth code for a CodeLens JWT."""
+    client_id = os.environ.get("GITHUB_CLIENT_ID")
+    client_secret = os.environ.get("GITHUB_CLIENT_SECRET")
+    if not client_id or not client_secret:
+        raise HTTPException(status_code=503, detail="GitHub OAuth not configured")
+    try:
+        async with httpx.AsyncClient() as client:
+            token_resp = await client.post(
+                "https://github.com/login/oauth/access_token",
+                json={"client_id": client_id, "client_secret": client_secret, "code": body.code},
+                headers={"Accept": "application/json"},
+                timeout=10,
+            )
+            token_data = token_resp.json()
+            access_token = token_data.get("access_token")
+            if not access_token:
+                raise HTTPException(status_code=401, detail="GitHub code exchange failed")
+            user_resp = await client.get(
+                "https://api.github.com/user",
+                headers={"Authorization": f"Bearer {access_token}", "Accept": "application/vnd.github.v3+json"},
+                timeout=10,
+            )
+            user_info = user_resp.json()
+        token = _issue_token({
+            "sub": str(user_info.get("id", "")),
+            "email": user_info.get("email"),
+            "name": user_info.get("name") or user_info.get("login"),
+            "picture": user_info.get("avatar_url"),
+            "provider": "github",
+        })
+        return {
+            "token": token,
+            "user": {
+                "name": user_info.get("name") or user_info.get("login"),
+                "email": user_info.get("email"),
+                "picture": user_info.get("avatar_url"),
+            },
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"GitHub auth failed: {e}")
 
 # ─── Models ───────────────────────────────────────────────────────────
 

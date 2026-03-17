@@ -340,8 +340,6 @@ function SignInModal({ onGoogle, onGitHub, onClose }) {
           padding:"44px 36px 36px", minWidth:320, maxWidth:400, width:"100%",
           boxShadow:"0 30px 80px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.05), inset 0 1px 0 rgba(255,255,255,0.1)",
           animation:"fadeUp 0.35s cubic-bezier(0.34,1.56,0.64,1)",
-          transformStyle:"preserve-3d",
-          willChange:"transform",
         }}>
         {/* Close */}
         <button onClick={onClose} style={{ position:"absolute", top:16, right:18,

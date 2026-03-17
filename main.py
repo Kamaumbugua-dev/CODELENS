@@ -242,72 +242,123 @@ def detect_language(code: str, filename: Optional[str] = None) -> str:
 
 # ─── Prompts ──────────────────────────────────────────────────────────
 
-ANALYSIS_SYSTEM_PROMPT = """You are CodeLens, an elite AI code reviewer with deep expertise in software engineering, security, and performance optimization. You perform predictive code analysis — identifying not just current issues but patterns likely to cause future problems.
+ANALYSIS_SYSTEM_PROMPT = """You are CodeLens, an elite AI code auditor. Your job is to perform an EXHAUSTIVE, line-by-line inspection of the submitted code. You must check EVERY SINGLE LINE and report EVERY issue found — do not skip anything, do not summarise groups of issues into one.
 
-Your analysis MUST be returned as valid JSON with this exact structure:
+You must inspect ALL of the following categories on every line:
+
+1. SYNTAX & PARSING — syntax errors, indentation errors, mismatched brackets/quotes, unreachable statements
+2. TYPE SAFETY — type mismatches, implicit unsafe coercions, untyped variables where types matter, nullable dereferences
+3. SECURITY (check ALL OWASP Top 10 and beyond):
+   - Injection: SQL injection, command injection, LDAP injection, XPath injection
+   - Hardcoded secrets: passwords, API keys, tokens, private keys in source code
+   - Unsafe deserialization: pickle, eval, exec, yaml.load without Loader, JSON.parse of untrusted input
+   - Path traversal / directory traversal
+   - XSS: unsanitised output to HTML/JS
+   - CSRF: missing tokens on state-changing endpoints
+   - Insecure cryptography: MD5/SHA1 for passwords, ECB mode, hardcoded IV/salt, weak key sizes
+   - SSRF: unvalidated URLs passed to HTTP clients
+   - XXE: XML parsing with external entities enabled
+   - Authentication / authorisation bypasses
+   - Information exposure in error messages, logs, or responses
+   - Open redirects
+4. RESOURCE MANAGEMENT — unclosed files, DB connections, sockets, streams; missing context managers; GC pressure; file descriptor leaks
+5. ERROR HANDLING — bare except clauses, swallowed exceptions, missing error propagation, no logging of errors, assertions used for flow control
+6. INPUT VALIDATION — missing validation of user/external input, no bounds checking, trusting external data without sanitisation
+7. CONCURRENCY & THREAD SAFETY — race conditions, shared mutable global state, non-atomic read-modify-write, deadlock potential, missing locks
+8. PERFORMANCE — O(n²) or worse algorithms where O(n log n) or better is possible, repeated recomputation inside loops, unnecessary object copies, inefficient data structure choices, N+1 query patterns, missing caching
+9. MEMORY — unbounded data structure growth, memory leaks, large allocations inside loops, holding references longer than needed
+10. CODE QUALITY & MAINTAINABILITY — magic numbers/strings, deeply nested logic (>3 levels), functions >30 lines doing too much, duplicate logic (DRY violations), dead/unreachable code, commented-out code left in
+11. BEST PRACTICES — missing null/None checks before dereferencing, division without zero guard, array/list access without bounds check, use of deprecated APIs, missing logging for critical operations, naming convention violations
+
+SCORING RULES — leave the health_score field as 0; the server will compute it from your issues list.
+
+OUTPUT FORMAT — return ONLY this exact JSON, nothing else:
 {
-  "summary": "Brief 1-2 sentence overview of the code quality",
-  "health_score": <integer 0-100>,
+  "summary": "2-3 sentence technical summary of the overall code quality and the most critical findings",
+  "health_score": 0,
   "language": "<detected language>",
-  "total_issues": <integer>,
+  "total_issues": <integer — must equal the length of the issues array>,
   "issues": [
     {
       "id": <integer starting from 1>,
       "severity": "critical" | "warning" | "info",
       "category": "bug" | "security" | "performance" | "code_smell" | "best_practice",
-      "title": "Short descriptive title",
-      "description": "Detailed explanation of the issue and WHY it matters",
-      "line_start": <integer line number or null>,
-      "line_end": <integer line number or null>,
-      "suggestion": "Specific code fix or improvement",
-      "predicted_impact": "What could go wrong if this isn't fixed"
+      "title": "Short precise title (max 8 words)",
+      "description": "Clear explanation of the exact problem and why it is dangerous or harmful",
+      "line_start": <integer — the exact line number from the numbered code>,
+      "line_end": <integer — same as line_start if single line>,
+      "suggestion": "Concrete corrected code snippet or precise fix instruction",
+      "predicted_impact": "Specific consequence if left unfixed: data breach / crash / OOM / slowdown etc."
     }
   ],
   "metrics": {
-    "bugs": <count>,
-    "security": <count>,
-    "performance": <count>,
-    "code_smells": <count>,
-    "best_practices": <count>
+    "bugs": <count of issues with category 'bug'>,
+    "security": <count of issues with category 'security'>,
+    "performance": <count of issues with category 'performance'>,
+    "code_smells": <count of issues with category 'code_smell'>,
+    "best_practices": <count of issues with category 'best_practice'>
   },
-  "positive_notes": ["List of things done well in the code"]
+  "positive_notes": ["Specific positive observation about the code — only include if genuinely warranted"]
 }
 
-Rules:
-- Be thorough but precise. No false positives.
-- Every issue must have a concrete, actionable suggestion.
-- Line numbers must be accurate.
-- The health_score should reflect: 90-100 = excellent, 70-89 = good, 50-69 = needs work, 30-49 = poor, 0-29 = critical.
-- Include at least 1-2 positive_notes to acknowledge good practices.
-- Focus on issues that MATTER: real bugs, actual security risks, genuine performance concerns.
-- Return ONLY valid JSON. No markdown, no code fences, no explanation outside the JSON."""
+STRICT RULES:
+- Every issue must reference the exact line number from the numbered input.
+- total_issues MUST equal the actual count of objects in the issues array.
+- Do NOT group multiple distinct problems into one issue — report each separately.
+- Do NOT invent issues that are not present.
+- Do NOT skip any line — inspect the entire file.
+- Return ONLY valid JSON. No markdown, no code fences, no text outside the JSON object."""
 
-FIX_SYSTEM_PROMPT = """You are an expert code security engineer. You will receive code with a list of issues. Fix ALL of them and return ONLY the corrected code.
+FIX_SYSTEM_PROMPT = """You are an expert software security engineer and code optimizer. You will receive code along with a complete list of issues. You MUST fix every single issue listed and also fix any additional problems you notice that were not listed.
 
-Rules:
-- Add inline comments prefixed with # FIX: (or // FIX: for JS/TS/Java) briefly explaining each change made.
-- Fix every single issue listed.
-- Do not remove functionality, only make it safe and correct.
-- Return RAW CODE ONLY. No markdown fences, no explanation, no preamble."""
+FIXING RULES:
+- Fix every listed issue completely — do not partially address anything.
+- Also fix any syntax errors, typos, or obvious bugs you notice independently.
+- Optimise algorithmic complexity wherever possible (replace O(n²) with O(n log n), etc.).
+- Replace all unsafe patterns: use parameterised queries, context managers, validated input, safe crypto.
+- Remove hardcoded credentials and replace with os.environ.get() calls.
+- Add missing null/None/zero guards where needed.
+- Close all resources properly using context managers (with statements).
+- Do NOT remove any business logic or functionality — only make it safe, correct, and efficient.
+- Add a brief inline comment prefixed with # FIX: (or // FIX: for JS/TS/Java/Go) on each changed line explaining what was fixed.
+
+Return RAW CODE ONLY. No markdown fences, no explanation, no preamble, no postscript."""
 
 def add_line_numbers(code: str) -> str:
     lines = code.splitlines()
     width = len(str(len(lines)))
     return "\n".join(f"{str(i+1).rjust(width)} | {line}" for i, line in enumerate(lines))
 
+def compute_health_score(issues: list) -> int:
+    """Deterministic server-side health score — not subject to LLM variation."""
+    if not issues:
+        return 100
+    deductions = sum(
+        18 if i.get("severity") == "critical" else
+        8  if i.get("severity") == "warning"  else
+        3
+        for i in issues
+    )
+    return max(0, 100 - deductions)
+
 def build_analysis_prompt(code: str, language: str, filename: Optional[str] = None) -> str:
     file_context = f" (filename: {filename})" if filename else ""
     numbered = add_line_numbers(code)
     total_lines = len(code.splitlines())
-    return f"""Analyze the following {language} code{file_context} for bugs, security vulnerabilities, performance issues, and code quality problems.
+    return f"""Perform an EXHAUSTIVE line-by-line audit of the following {language} code{file_context}.
 
-The code has {total_lines} lines total. Each line is prefixed with its exact line number. You MUST only reference line numbers that actually exist (1 to {total_lines}).
+IMPORTANT:
+- The code has {total_lines} lines. Inspect EVERY line from line 1 to line {total_lines}.
+- Only reference line numbers that exist (1 to {total_lines}).
+- Report EVERY issue — do not skip or group problems.
+- Check all 11 categories listed in your system instructions on every line.
 
-```{language}
+CODE (each line is prefixed with its line number):
+```
 {numbered}
 ```
 
-Return your analysis as the specified JSON structure. Be thorough and precise. Line numbers in your response must exactly match the numbered lines above."""
+Return ONLY the JSON analysis object. No markdown, no explanation outside the JSON."""
 
 def build_fix_prompt(code: str, language: str, issues: List[Any]) -> str:
     issues_list = "\n".join([
@@ -387,7 +438,8 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
     try:
         response = get_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
-            max_tokens=4096,
+            max_tokens=8000,
+            temperature=0,           # deterministic — same code → same issues every time
             messages=[
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
@@ -400,6 +452,24 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
 
         analysis = json.loads(raw_text)
         analysis["language"] = language
+
+        # ── Server-side overrides for consistency ──────────────
+        issues = analysis.get("issues", [])
+
+        # Recalculate total_issues from actual array length
+        analysis["total_issues"] = len(issues)
+
+        # Recalculate metrics from actual issue categories
+        analysis["metrics"] = {
+            "bugs":           sum(1 for i in issues if i.get("category") == "bug"),
+            "security":       sum(1 for i in issues if i.get("category") == "security"),
+            "performance":    sum(1 for i in issues if i.get("category") == "performance"),
+            "code_smells":    sum(1 for i in issues if i.get("category") == "code_smell"),
+            "best_practices": sum(1 for i in issues if i.get("category") == "best_practice"),
+        }
+
+        # Override health score with deterministic server-side calculation
+        analysis["health_score"] = compute_health_score(issues)
 
         logger.info(
             f'"event":"analyze_complete","ip":"{ip}","language":"{language}",'
@@ -433,7 +503,8 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
     try:
         response = get_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
-            max_tokens=4096,
+            max_tokens=8000,
+            temperature=0,
             messages=[
                 {"role": "system", "content": FIX_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},

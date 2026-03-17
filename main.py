@@ -11,15 +11,18 @@ import time
 import logging
 import uuid
 import httpx
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from groq import Groq
+from jose import jwt, JWTError
+from jose import jwk as jose_jwk
 
 # ─── Logging ──────────────────────────────────────────────────────────
 
@@ -84,6 +87,47 @@ def get_client() -> Groq:
             raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured")
         _client = Groq(api_key=api_key)
     return _client
+
+# ─── Auth (Clerk JWT via JWKS) ────────────────────────────────────────
+
+_http_bearer = HTTPBearer(auto_error=False)
+_jwks_cache: Optional[dict] = None
+
+async def _get_jwks() -> Optional[dict]:
+    global _jwks_cache
+    if _jwks_cache is None:
+        url = os.environ.get("CLERK_JWKS_URL")
+        if not url:
+            return None
+        async with httpx.AsyncClient() as c:
+            resp = await c.get(url, timeout=10)
+            _jwks_cache = resp.json()
+    return _jwks_cache
+
+async def get_current_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(_http_bearer),
+) -> dict:
+    jwks = await _get_jwks()
+    # If CLERK_JWKS_URL is not set, auth is disabled (local dev)
+    if jwks is None:
+        return {"sub": "anonymous"}
+
+    if not credentials:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
+    token = credentials.credentials
+    try:
+        header = jwt.get_unverified_header(token)
+        kid = header.get("kid")
+        key_data = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+        if not key_data:
+            _jwks_cache = None  # force refresh next request
+            raise HTTPException(status_code=401, detail="Unknown signing key")
+        public_key = jose_jwk.construct(key_data)
+        payload = jwt.decode(token, public_key, algorithms=["RS256"], options={"verify_aud": False})
+        return payload
+    except JWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
 
 # ─── Models ───────────────────────────────────────────────────────────
 
@@ -258,7 +302,7 @@ async def health_check():
 
 @app.post("/analyze")
 @limiter.limit("10/minute;50/hour")
-async def analyze_code(request: Request, body: AnalyzeRequest):
+async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depends(get_current_user)):
     """Analyze code for bugs, security issues, and performance problems."""
     ip = request.client.host if request.client else "unknown"
 
@@ -310,7 +354,7 @@ async def analyze_code(request: Request, body: AnalyzeRequest):
 
 @app.post("/fix")
 @limiter.limit("5/minute;20/hour")
-async def fix_code(request: Request, body: FixRequest):
+async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_current_user)):
     """Generate fixed code that resolves all identified issues."""
     ip = request.client.host if request.client else "unknown"
 
@@ -347,13 +391,13 @@ async def fix_code(request: Request, body: FixRequest):
 
 @app.post("/github/fetch")
 @limiter.limit("20/minute")
-async def fetch_from_github(request: Request, body: GitHubRequest):
+async def fetch_from_github(request: Request, body: GitHubRequest, user: dict = Depends(get_current_user)):
     """Fetch files from a public GitHub repository."""
     return await fetch_github_file(body.repo_url, body.file_path)
 
 @app.post("/github/analyze")
 @limiter.limit("10/minute;30/hour")
-async def analyze_github_file(request: Request, body: GitHubRequest):
+async def analyze_github_file(request: Request, body: GitHubRequest, user: dict = Depends(get_current_user)):
     """Fetch and analyze a file from GitHub."""
     ip = request.client.host if request.client else "unknown"
 

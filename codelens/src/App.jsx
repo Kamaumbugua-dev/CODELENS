@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback } from "react";
+import { useAuth, SignInButton, UserButton, SignedIn, SignedOut } from "@clerk/react";
 
 // ─── Sample Code ──────────────────────────────────────────────────────
 const SAMPLE_CODE = `import sqlite3
@@ -226,6 +227,7 @@ function IssueRow({ issue, index, isExpanded, onToggle, onSlide }) {
 
 // ─── Main App ─────────────────────────────────────────────────────────
 export default function CodeLens() {
+  const { isSignedIn, getToken } = useAuth();
   const [code, setCode] = useState(SAMPLE_CODE);
   const [analysis, setAnalysis] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -269,9 +271,10 @@ export default function CodeLens() {
     }
 
     try {
+      const token = await getToken();
       const resp = await fetch(`${API_BASE}/analyze`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token && { Authorization: `Bearer ${token}` }) },
         body: JSON.stringify({ code, language: "auto" }),
       });
       if (!resp.ok) {
@@ -299,9 +302,10 @@ export default function CodeLens() {
     setReworking(true);
     setError(null);
     try {
+      const token = await getToken();
       const resp = await fetch(`${API_BASE}/fix`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...(token && { Authorization: `Bearer ${token}` }) },
         body: JSON.stringify({ code, language: analysis.language, issues: analysis.issues }),
       });
       if (!resp.ok) {
@@ -447,18 +451,33 @@ export default function CodeLens() {
               <input type="checkbox" checked={useMock} onChange={(e) => setUseMock(e.target.checked)} style={{ accentColor: "#00E5FF" }} />
               demo
             </label>
-            <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()}
-              style={{
-                padding: "10px 22px", borderRadius: 10, border: "none",
-                cursor: loading ? "wait" : "pointer",
-                background: loading ? "rgba(255,255,255,0.07)" : "linear-gradient(135deg,#00E5FF 0%,#7B2FFF 100%)",
-                color: loading ? "rgba(255,255,255,0.3)" : "#fff",
-                fontSize: 13, fontWeight: 700, fontFamily: "'Outfit', sans-serif",
-                animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
-                transition: "all 0.25s ease",
-              }}>
-              {loading ? "Scanning..." : "Analyze Code →"}
-            </button>
+
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button style={{
+                  padding: "10px 22px", borderRadius: 10, border: "1px solid rgba(0,229,255,0.35)",
+                  cursor: "pointer", background: "rgba(0,229,255,0.08)",
+                  color: "#00E5FF", fontSize: 13, fontWeight: 700, fontFamily: "'Outfit', sans-serif",
+                  transition: "all 0.25s ease",
+                }}>Sign In →</button>
+              </SignInButton>
+            </SignedOut>
+
+            <SignedIn>
+              <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()}
+                style={{
+                  padding: "10px 22px", borderRadius: 10, border: "none",
+                  cursor: loading ? "wait" : "pointer",
+                  background: loading ? "rgba(255,255,255,0.07)" : "linear-gradient(135deg,#00E5FF 0%,#7B2FFF 100%)",
+                  color: loading ? "rgba(255,255,255,0.3)" : "#fff",
+                  fontSize: 13, fontWeight: 700, fontFamily: "'Outfit', sans-serif",
+                  animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
+                  transition: "all 0.25s ease",
+                }}>
+                {loading ? "Scanning..." : "Analyze Code →"}
+              </button>
+              <UserButton appearance={{ elements: { avatarBox: { width: 34, height: 34 } } }} />
+            </SignedIn>
           </div>
         </header>
 
@@ -685,23 +704,48 @@ export default function CodeLens() {
             </div>
           )}
 
-          {/* ─── Empty state ──────────────────────────────────────── */}
+          {/* ─── Empty / Sign-in state ────────────────────────────── */}
           {!analysis && !loading && (
             <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 24, padding: 48, animation: "fadeIn 0.6s ease" }}>
               <div style={{ width: 80, height: 80, borderRadius: 24, background: "linear-gradient(135deg,rgba(0,229,255,0.15),rgba(155,89,255,0.15))", border: "1px solid rgba(0,229,255,0.2)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 36, boxShadow: "0 0 40px rgba(0,229,255,0.1)" }}>⟨/⟩</div>
-              <div style={{ textAlign: "center", maxWidth: 340 }}>
-                <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg,#00E5FF,#B06FFF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                  Ready to Scan
-                </h2>
-                <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, marginBottom: 20 }}>
-                  Paste your code in the editor and click <strong style={{ color: "rgba(0,229,255,0.6)" }}>Analyze Code</strong> to detect security vulnerabilities, bugs, and performance issues.
-                </p>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
-                  {["SQL Injection", "Memory Leaks", "O(n²) Complexity", "Hardcoded Secrets", "eval() Misuse"].map((tag) => (
-                    <span key={tag} style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", padding: "4px 10px", borderRadius: 6, fontFamily: "'JetBrains Mono', monospace" }}>{tag}</span>
-                  ))}
+              <SignedOut>
+                <div style={{ textAlign: "center", maxWidth: 360 }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg,#00E5FF,#B06FFF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    Sign In to Start Scanning
+                  </h2>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, marginBottom: 24 }}>
+                    Sign in with GitHub or Google to detect security vulnerabilities, bugs, and performance issues in any code.
+                  </p>
+                  <SignInButton mode="modal">
+                    <button style={{
+                      padding: "13px 36px", borderRadius: 12, border: "none", cursor: "pointer",
+                      background: "linear-gradient(135deg,#00E5FF 0%,#7B2FFF 100%)",
+                      color: "#fff", fontSize: 15, fontWeight: 700, fontFamily: "'Outfit', sans-serif",
+                      animation: "glowBtn 3s ease-in-out infinite", boxShadow: "0 4px 22px rgba(0,229,255,0.25)",
+                    }}>Sign In with GitHub →</button>
+                  </SignInButton>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginTop: 24 }}>
+                    {["SQL Injection", "Memory Leaks", "O(n²) Complexity", "Hardcoded Secrets", "eval() Misuse"].map((tag) => (
+                      <span key={tag} style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", padding: "4px 10px", borderRadius: 6, fontFamily: "'JetBrains Mono', monospace" }}>{tag}</span>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              </SignedOut>
+              <SignedIn>
+                <div style={{ textAlign: "center", maxWidth: 340 }}>
+                  <h2 style={{ fontSize: 22, fontWeight: 800, marginBottom: 10, fontFamily: "'Outfit', sans-serif", background: "linear-gradient(135deg,#00E5FF,#B06FFF)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+                    Ready to Scan
+                  </h2>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.35)", lineHeight: 1.7, marginBottom: 20 }}>
+                    Paste your code in the editor and click <strong style={{ color: "rgba(0,229,255,0.6)" }}>Analyze Code</strong> to detect security vulnerabilities, bugs, and performance issues.
+                  </p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center" }}>
+                    {["SQL Injection", "Memory Leaks", "O(n²) Complexity", "Hardcoded Secrets", "eval() Misuse"].map((tag) => (
+                      <span key={tag} style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", padding: "4px 10px", borderRadius: 6, fontFamily: "'JetBrains Mono', monospace" }}>{tag}</span>
+                    ))}
+                  </div>
+                </div>
+              </SignedIn>
               <div style={{ padding: "10px 20px", borderRadius: 10, background: "rgba(0,229,255,0.04)", border: "1px solid rgba(0,229,255,0.1)" }}>
                 <span style={{ fontSize: 10, color: "rgba(0,229,255,0.4)", fontFamily: "'JetBrains Mono', monospace", letterSpacing: 2 }}>AXON LATTICE LABS™ · CODELENS v2.0</span>
               </div>

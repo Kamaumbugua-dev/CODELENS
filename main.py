@@ -622,7 +622,7 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=8000,
+            max_tokens=3000,
             temperature=0,
         )
         # Strip markdown fences if LLM wraps JSON in ```json ... ```
@@ -706,7 +706,7 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
                 {"role": "system", "content": FIX_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
-            max_tokens=8000,
+            max_tokens=6000,
             temperature=0,
         )
         return _strip_fences(raw)
@@ -720,7 +720,7 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
-            max_tokens=8000,
+            max_tokens=3000,
             temperature=0,
         )
         raw = _strip_fences(raw)

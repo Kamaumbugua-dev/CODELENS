@@ -547,6 +547,52 @@ async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> d
 async def health_check():
     return {"status": "ok", "service": "CodeLens API", "version": "2.0.0"}
 
+@app.get("/providers")
+async def check_providers():
+    """Test each LLM provider with a minimal prompt and report status."""
+    TEST_MESSAGES = [{"role": "user", "content": "Reply with the single word: ok"}]
+    results = {}
+
+    # Groq
+    try:
+        get_client().chat.completions.create(
+            model="llama-3.1-8b-instant", messages=TEST_MESSAGES,
+            max_tokens=5, temperature=0,
+        )
+        results["groq"] = "ok"
+    except Exception as e:
+        results["groq"] = str(e)[:200]
+
+    # Cerebras
+    cb = _get_cerebras_client()
+    if cb is None:
+        results["cerebras"] = "not configured (CEREBRAS_API_KEY missing)"
+    else:
+        try:
+            cb.chat.completions.create(
+                model="llama-3.1-8b", messages=TEST_MESSAGES,
+                max_tokens=5, temperature=0,
+            )
+            results["cerebras"] = "ok"
+        except Exception as e:
+            results["cerebras"] = str(e)[:200]
+
+    # OpenRouter
+    or_c = _get_openrouter_client()
+    if or_c is None:
+        results["openrouter"] = "not configured (OPENROUTER_API_KEY missing)"
+    else:
+        try:
+            or_c.chat.completions.create(
+                model="meta-llama/llama-3.1-8b-instruct:free", messages=TEST_MESSAGES,
+                max_tokens=5, temperature=0,
+            )
+            results["openrouter"] = "ok"
+        except Exception as e:
+            results["openrouter"] = str(e)[:200]
+
+    return results
+
 @app.post("/analyze")
 @limiter.limit("10/minute;50/hour")
 async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depends(get_current_user)):

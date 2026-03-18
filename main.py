@@ -330,16 +330,27 @@ def add_line_numbers(code: str) -> str:
     return "\n".join(f"{str(i+1).rjust(width)} | {line}" for i, line in enumerate(lines))
 
 def compute_health_score(issues: list) -> int:
-    """Deterministic server-side health score — not subject to LLM variation."""
+    """
+    Deterministic server-side health score using diminishing-returns formula.
+    No matter how many issues exist, the score never bottoms out to 0 from
+    issue count alone — it converges toward a floor gracefully.
+
+    Calibration:
+      0 issues            → 100
+      1 critical          → ~69
+      2 criticals         → ~53
+      4 criticals         → ~36
+      4 crit + 4 warn + 1 → ~28  (matches MOCK_ANALYSIS baseline)
+      10+ criticals       → ~15–20
+    """
     if not issues:
         return 100
-    deductions = sum(
-        18 if i.get("severity") == "critical" else
-        8  if i.get("severity") == "warning"  else
-        3
-        for i in issues
-    )
-    return max(0, 100 - deductions)
+    critical = sum(1 for i in issues if i.get("severity") == "critical")
+    warning  = sum(1 for i in issues if i.get("severity") == "warning")
+    info     = sum(1 for i in issues if i.get("severity") == "info")
+    weight   = critical * 10 + warning * 4 + info * 1
+    score    = round(100 / (1 + weight * 0.045))
+    return max(0, min(100, score))
 
 def build_analysis_prompt(code: str, language: str, filename: Optional[str] = None) -> str:
     file_context = f" (filename: {filename})" if filename else ""
@@ -447,8 +458,12 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
         )
 
         raw_text = response.choices[0].message.content.strip()
-        raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text)
+        # Strip markdown fences if LLM wraps JSON in ```json ... ```
+        raw_text = re.sub(r"^```[^\n]*\n", "", raw_text)
+        raw_text = re.sub(r"\n```\s*$", "", raw_text)
+        raw_text = re.sub(r"^```\s*", "", raw_text)
         raw_text = re.sub(r"\s*```$", "", raw_text)
+        raw_text = raw_text.strip()
 
         analysis = json.loads(raw_text)
         analysis["language"] = language
@@ -512,8 +527,13 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         )
 
         fixed = response.choices[0].message.content.strip()
-        fixed = re.sub(r"^```(?:\w+)?\s*\n?", "", fixed)
-        fixed = re.sub(r"\n?```\s*$", "", fixed)
+        # Robustly strip any markdown code fences the LLM may have added
+        # Handles: ```python\n...\n``` and ```\n...\n``` and ``` ... ```
+        fixed = re.sub(r"^```[^\n]*\n", "", fixed)   # opening fence + language tag
+        fixed = re.sub(r"\n```\s*$", "", fixed)       # closing fence at end
+        fixed = re.sub(r"^```\s*", "", fixed)         # fence with no newline after
+        fixed = re.sub(r"\s*```$", "", fixed)         # fence with no newline before
+        fixed = fixed.strip()
 
         logger.info(f'"event":"fix_complete","ip":"{ip}","issues_resolved":{len(body.issues)}')
         return {"fixed_code": fixed, "language": body.language, "issues_resolved": len(body.issues)}

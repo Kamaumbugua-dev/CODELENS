@@ -1190,6 +1190,105 @@ export default function CodeLens() {
     </div>
   );
 
+  // ─── FAQ Page ─────────────────────────────────────────────────────
+  const renderFaqPage = () => {
+    const [openIdx, setOpenIdx] = useState(null);
+    const faqs = [
+      {
+        q: "What is CodeLens and how does it work?",
+        a: "CodeLens is an AI-powered code analysis tool built by Axon Lattice Labs. You paste your code into the editor, click Analyze, and our backend sends it to a Groq-hosted LLM (Llama 3.3 70B) with an exhaustive 11-category audit checklist. The AI inspects every line for security vulnerabilities, bugs, performance issues, and code quality problems, then returns a structured report with a health score, issue list, fix suggestions, and predicted impact.",
+      },
+      {
+        q: "What programming languages does CodeLens support?",
+        a: "CodeLens can analyse any language the underlying LLM understands — which includes Python, JavaScript, TypeScript, Java, Go, Rust, C, C++, C#, Ruby, PHP, Swift, Kotlin, and more. Language is auto-detected from your code. For best line-number accuracy, avoid mixing multiple languages in a single paste.",
+      },
+      {
+        q: "How is the health score calculated?",
+        a: "The health score (0–100) is computed server-side — not by the AI — using a diminishing-returns formula: score = 100 / (1 + weight × 0.045), where weight = (critical issues × 10) + (warning issues × 4) + (info issues × 1). This means the score is completely deterministic: the same code always produces the same score, and it can never artificially bottom out to 0 just from having many issues.",
+      },
+      {
+        q: "Why does CodeLens sometimes report more issues than I expect?",
+        a: "CodeLens is designed to be exhaustive. It checks 11 categories on every line: syntax, type safety, all OWASP Top 10 security patterns, resource management, error handling, input validation, concurrency, performance, memory, code quality, and best practices. This intentionally surfaces issues that a quick manual review would miss. Each reported issue is a genuine finding — not a false positive.",
+      },
+      {
+        q: "What does the 'Rework Code with AI Fixes' button do?",
+        a: "After an analysis, clicking Rework sends your original code plus the full issue list back to the AI with instructions to fix every problem. The AI rewrites the code to use parameterised queries, context managers, safe crypto, validated input, and optimised algorithms — then returns the corrected version directly into the editor. Each changed line is annotated with a # FIX: comment explaining what was changed.",
+      },
+      {
+        q: "Is my code stored or shared?",
+        a: "No. Your code is sent directly to the Groq API for analysis and is not stored on our servers. We store only lightweight metadata in your browser's localStorage: your auth token, your display name/avatar, and a snippet of each scan (first 120 characters) for your History page. Nothing is ever shared with third parties.",
+      },
+      {
+        q: "Do I need to sign in to use CodeLens?",
+        a: "Yes — a free GitHub or Google sign-in is required to run analyses. This lets us associate scan history with your account, enforce fair-use rate limits (10 analyses/minute, 50/hour on Basic), and protect the API from abuse. Sign-in takes under 5 seconds and requires no personal information beyond your name and email.",
+      },
+      {
+        q: "What are the rate limits?",
+        a: "Basic (free) plan: 10 analyses per minute, 50 per hour. Rework (fix) requests: 5 per minute, 20 per hour. These limits are generous for individual use. If you need higher throughput for CI/CD pipelines or team workflows, the Pro plan removes these restrictions.",
+      },
+      {
+        q: "What is the difference between Basic and Pro?",
+        a: "Basic is free forever and covers individual use: unlimited code length, full vulnerability scanning, AI fix suggestions, and 30-scan history. Pro ($12/month) adds unlimited scan history, higher rate limits, team workspaces, CI/CD API access, custom rules, Slack/GitHub PR integration, and priority AI processing with faster response times.",
+      },
+      {
+        q: "How accurate is the AI analysis?",
+        a: "Very high for well-known patterns — SQL injection, hardcoded credentials, resource leaks, O(n²) algorithms, eval/exec usage, and OWASP Top 10 vulnerabilities are detected with near-certainty. For subtle logic errors or domain-specific business rule violations, the AI may occasionally miss edge cases. We recommend treating CodeLens as a first-pass automated reviewer that complements — not replaces — human code review.",
+      },
+      {
+        q: "Can I analyse code from a GitHub repository?",
+        a: "Yes. The backend has a /github/analyze endpoint that accepts a GitHub repository URL and file path, fetches the raw file, and runs the same full analysis. This feature will be surfaced in the UI in an upcoming release. For now, you can paste code directly or use the API endpoint manually.",
+      },
+      {
+        q: "How do I report a bug or request a feature?",
+        a: "Head to the Contact page and send us a message, or email hello@axonlattice.dev directly. For bug reports, include the code snippet that caused the issue (you can redact sensitive parts) and describe what you expected vs. what happened. Feature requests are very welcome — we prioritise based on user feedback.",
+      },
+    ];
+    return (
+      <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
+        <div style={{ maxWidth:780, margin:"0 auto" }}>
+          <div style={{ textAlign:"center", marginBottom:isMobile ? 36 : 52 }}>
+            <span style={{ fontSize:10, color:T.cyan, fontFamily:"'JetBrains Mono',monospace", letterSpacing:3 }}>FAQ</span>
+            <h2 style={{ fontSize:isMobile ? 28 : 42, fontWeight:900, fontFamily:"'Outfit',sans-serif", letterSpacing:-1, marginTop:12, background:"linear-gradient(135deg,#fff,rgba(255,255,255,0.65))", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>Frequently Asked Questions</h2>
+            <p style={{ fontSize:15, color:"rgba(255,255,255,0.3)", marginTop:12, lineHeight:1.7 }}>Everything you need to know about CodeLens.</p>
+          </div>
+          <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+            {faqs.map((faq, idx) => {
+              const isOpen = openIdx === idx;
+              return (
+                <div key={idx} style={{
+                  borderRadius:18, overflow:"hidden",
+                  border:`1px solid ${isOpen ? "rgba(0,212,255,0.22)" : "rgba(255,255,255,0.07)"}`,
+                  background: isOpen ? "linear-gradient(145deg,rgba(0,212,255,0.05),rgba(3,8,18,0.9))" : "rgba(255,255,255,0.025)",
+                  backdropFilter:"blur(20px)", transition:"border-color 0.25s, background 0.25s",
+                  boxShadow: isOpen ? "0 8px 30px rgba(0,212,255,0.08)" : "0 2px 10px rgba(0,0,0,0.2)",
+                }}>
+                  <button onClick={() => setOpenIdx(isOpen ? null : idx)} style={{
+                    width:"100%", display:"flex", alignItems:"center", justifyContent:"space-between",
+                    gap:16, padding:isMobile ? "16px 18px" : "18px 24px",
+                    background:"none", border:"none", cursor:"pointer", textAlign:"left",
+                  }}>
+                    <span style={{ fontSize:isMobile ? 13 : 14, fontWeight:700, fontFamily:"'Space Grotesk',sans-serif", color: isOpen ? T.cyan : "rgba(255,255,255,0.82)", lineHeight:1.4, flex:1 }}>{faq.q}</span>
+                    <span style={{ fontSize:18, color: isOpen ? T.cyan : "rgba(255,255,255,0.25)", flexShrink:0, transition:"transform 0.3s cubic-bezier(0.34,1.56,0.64,1)", display:"inline-block", transform: isOpen ? "rotate(45deg)" : "none" }}>+</span>
+                  </button>
+                  {isOpen && (
+                    <div style={{ padding:isMobile ? "0 18px 18px" : "0 24px 20px", animation:"fadeUp 0.25s ease" }}>
+                      <div style={{ height:1, background:"rgba(0,212,255,0.12)", marginBottom:16 }}/>
+                      <p style={{ fontSize:13, color:"rgba(255,255,255,0.5)", lineHeight:1.9, margin:0 }}>{faq.a}</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <div style={{ marginTop:40, padding:"28px", borderRadius:20, textAlign:"center", background:"linear-gradient(145deg,rgba(139,92,246,0.06),rgba(3,8,18,0.9))", border:"1px solid rgba(139,92,246,0.14)" }}>
+            <p style={{ fontSize:14, color:"rgba(255,255,255,0.4)", marginBottom:16 }}>Still have questions? We're happy to help.</p>
+            <button onClick={() => setActivePage("contact")} style={{ padding:"11px 28px", borderRadius:14, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#00D4FF,#7C3AED)", color:"#fff", fontSize:13, fontWeight:800, fontFamily:"'Outfit',sans-serif", boxShadow:"0 4px 0 rgba(0,0,0,0.3),0 6px 24px rgba(0,212,255,0.25)" }}>Contact Us →</button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   // ─── Contact Page ─────────────────────────────────────────────────
   const renderContactPage = () => {
     return (
@@ -1367,6 +1466,7 @@ export default function CodeLens() {
                   { key:"history",  label:"History" },
                   { key:"about",    label:"About" },
                   { key:"services", label:"Services" },
+                  { key:"faq",      label:"FAQ" },
                   { key:"contact",  label:"Contact" },
                 ].map(({ key, label }) => (
                   <button key={key} onClick={() => setActivePage(key)} className={`nav-link${activePage === key ? " active" : ""}`}>{label}</button>
@@ -1420,6 +1520,7 @@ export default function CodeLens() {
                 { key:"history",  label:"History",      icon:"⏱" },
                 { key:"about",    label:"About",        icon:"◈" },
                 { key:"services", label:"Services",     icon:"◇" },
+                { key:"faq",      label:"FAQ",          icon:"?" },
                 { key:"contact",  label:"Contact",      icon:"✉" },
               ].map(({ key, label, icon }) => (
                 <button key={key} onClick={() => { setActivePage(key); setMobileMenuOpen(false); }} style={{
@@ -1449,6 +1550,7 @@ export default function CodeLens() {
               {activePage === "history"  && renderHistoryPage()}
               {activePage === "about"    && renderAboutPage()}
               {activePage === "services" && renderServicesPage()}
+              {activePage === "faq"      && renderFaqPage()}
               {activePage === "contact"  && renderContactPage()}
             </div>
           )}
@@ -1611,13 +1713,99 @@ export default function CodeLens() {
           </div>
         )}
 
-        {/* ── Footer ─────────────────────────────────────────── */}
-        {!isMobile && (
-          <div style={{ position:"fixed", bottom:10, right:16, zIndex:50, fontSize:8,
-            color:"rgba(255,255,255,0.06)", fontFamily:"'JetBrains Mono',monospace",
-            letterSpacing:2.5, textTransform:"uppercase", pointerEvents:"none" }}>
-            AXON LATTICE LABS™ · CodeLens v2.0
-          </div>
+        {/* ── Footer (non-analyze pages) ─────────────────────── */}
+        {activePage !== "analyze" && (
+          <footer style={{
+            flexShrink:0, position:"relative", zIndex:10,
+            background:"rgba(2,5,14,0.92)",
+            backdropFilter:"blur(40px) saturate(180%)",
+            borderTop:"1px solid rgba(255,255,255,0.06)",
+            padding:isMobile ? "32px 20px 24px" : "48px 64px 28px",
+          }}>
+            <div style={{ maxWidth:1100, margin:"0 auto" }}>
+              {/* Top row */}
+              <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "2fr 1fr 1fr 1fr", gap:isMobile ? 32 : 48, marginBottom:40 }}>
+                {/* Brand column */}
+                <div>
+                  <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:14 }}>
+                    <div style={{ width:34, height:34, borderRadius:10, background:"linear-gradient(135deg,rgba(0,212,255,0.15),rgba(139,92,246,0.15))", border:"1px solid rgba(0,212,255,0.2)", display:"flex", alignItems:"center", justifyContent:"center" }}>
+                      <span style={{ fontSize:14, fontWeight:900, background:"linear-gradient(135deg,#00D4FF,#8B5CF6)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>⟨/⟩</span>
+                    </div>
+                    <span style={{ fontSize:18, fontWeight:900, fontFamily:"'Outfit',sans-serif", background:"linear-gradient(135deg,#00D4FF,#8B5CF6,#FF2D78)", WebkitBackgroundClip:"text", WebkitTextFillColor:"transparent" }}>CodeLens</span>
+                  </div>
+                  <p style={{ fontSize:12, color:"rgba(255,255,255,0.28)", lineHeight:1.85, maxWidth:280, marginBottom:18 }}>Predictive code intelligence powered by AI. Detect vulnerabilities, bugs, and performance issues before they reach production.</p>
+                  <div style={{ display:"flex", gap:10 }}>
+                    {[
+                      { label:"GitHub", href:"https://github.com/Kamaumbugua-dev/CODELENS" },
+                      { label:"Email",  href:"mailto:hello@axonlattice.dev" },
+                    ].map(({ label, href }) => (
+                      <a key={label} href={href} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.3)", textDecoration:"none", padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.08)", transition:"all 0.2s", fontFamily:"'JetBrains Mono',monospace" }}
+                        onMouseEnter={e => { e.currentTarget.style.color=T.cyan; e.currentTarget.style.borderColor="rgba(0,212,255,0.3)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.color="rgba(255,255,255,0.3)"; e.currentTarget.style.borderColor="rgba(255,255,255,0.08)"; }}>{label}</a>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Product links */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.25)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2.5, marginBottom:16, textTransform:"uppercase" }}>Product</div>
+                  {[
+                    { label:"Analyze Code", page:"analyze" },
+                    { label:"History",      page:"history" },
+                    { label:"Services",     page:"services" },
+                    { label:"FAQ",          page:"faq" },
+                  ].map(({ label, page }) => (
+                    <button key={page} onClick={() => setActivePage(page)} style={{ display:"block", background:"none", border:"none", cursor:"pointer", fontSize:13, color:"rgba(255,255,255,0.35)", fontFamily:"'Space Grotesk',sans-serif", padding:"5px 0", textAlign:"left", transition:"color 0.2s" }}
+                      onMouseEnter={e => e.currentTarget.style.color="#fff"}
+                      onMouseLeave={e => e.currentTarget.style.color="rgba(255,255,255,0.35)"}>{label}</button>
+                  ))}
+                </div>
+
+                {/* Company links */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.25)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2.5, marginBottom:16, textTransform:"uppercase" }}>Company</div>
+                  {[
+                    { label:"About Us",  page:"about" },
+                    { label:"Contact",   page:"contact" },
+                  ].map(({ label, page }) => (
+                    <button key={page} onClick={() => setActivePage(page)} style={{ display:"block", background:"none", border:"none", cursor:"pointer", fontSize:13, color:"rgba(255,255,255,0.35)", fontFamily:"'Space Grotesk',sans-serif", padding:"5px 0", textAlign:"left", transition:"color 0.2s" }}
+                      onMouseEnter={e => e.currentTarget.style.color="#fff"}
+                      onMouseLeave={e => e.currentTarget.style.color="rgba(255,255,255,0.35)"}>{label}</button>
+                  ))}
+                </div>
+
+                {/* Status / info */}
+                <div>
+                  <div style={{ fontSize:10, fontWeight:800, color:"rgba(255,255,255,0.25)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2.5, marginBottom:16, textTransform:"uppercase" }}>Status</div>
+                  <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:10 }}>
+                    <span style={{ width:7, height:7, borderRadius:"50%", background:T.emerald, boxShadow:`0 0 8px ${T.emerald}`, display:"inline-block", animation:"pulse 2s ease-in-out infinite" }}/>
+                    <span style={{ fontSize:12, color:T.emerald, fontFamily:"'JetBrains Mono',monospace" }}>All systems operational</span>
+                  </div>
+                  <div style={{ fontSize:11, color:"rgba(255,255,255,0.2)", fontFamily:"'JetBrains Mono',monospace", lineHeight:1.9 }}>
+                    <div>API: Render (free tier)</div>
+                    <div>Frontend: Vercel</div>
+                    <div>LLM: Groq · Llama 3.3 70B</div>
+                    <div>Auth: GitHub · Google OAuth</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height:1, background:"rgba(255,255,255,0.05)", marginBottom:22 }}/>
+
+              {/* Bottom row */}
+              <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:12 }}>
+                <span style={{ fontSize:11, color:"rgba(255,255,255,0.15)", fontFamily:"'JetBrains Mono',monospace" }}>
+                  © {new Date().getFullYear()} Axon Lattice Labs™ · CodeLens v2.0 · All rights reserved
+                </span>
+                <div style={{ display:"flex", gap:20 }}>
+                  {["Privacy Policy","Terms of Service"].map(t => (
+                    <span key={t} style={{ fontSize:11, color:"rgba(255,255,255,0.15)", fontFamily:"'JetBrains Mono',monospace", cursor:"default" }}>{t}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </footer>
         )}
       </div>
     </>

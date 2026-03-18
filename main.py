@@ -1,6 +1,6 @@
 """
 CodeLens — Predictive Code Review Assistant
-Backend API powered by FastAPI + Groq
+Backend API powered by FastAPI + Groq (Cerebras fallback)
 © AXON LATTICE LABS™
 """
 
@@ -22,6 +22,7 @@ from slowapi.errors import RateLimitExceeded
 from pydantic import BaseModel
 from typing import Optional, List, Any
 from groq import Groq
+from openai import OpenAI
 from jose import jwt, JWTError
 
 # ─── Logging ──────────────────────────────────────────────────────────
@@ -75,18 +76,102 @@ async def log_requests(request: Request, call_next):
     response.headers["X-Request-ID"] = request_id
     return response
 
-# ─── Groq Client ──────────────────────────────────────────────────────
+# ─── LLM Clients (Groq → Cerebras → OpenRouter fallback chain) ────────
 
-_client: Optional[Groq] = None
+_groq_client: Optional[Groq] = None
+_cerebras_client: Optional[OpenAI] = None
+_openrouter_client: Optional[OpenAI] = None
+
+_CEREBRAS_MODEL_MAP = {
+    "llama-3.3-70b-versatile": "llama3.3-70b",
+    "llama-3.1-8b-instant":    "llama3.1-8b",
+}
+_OPENROUTER_MODEL_MAP = {
+    "llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct:free",
+    "llama-3.1-8b-instant":    "meta-llama/llama-3.1-8b-instruct:free",
+}
 
 def get_client() -> Groq:
-    global _client
-    if _client is None:
+    global _groq_client
+    if _groq_client is None:
         api_key = os.environ.get("GROQ_API_KEY")
         if not api_key:
             raise HTTPException(status_code=503, detail="GROQ_API_KEY is not configured")
-        _client = Groq(api_key=api_key)
-    return _client
+        _groq_client = Groq(api_key=api_key)
+    return _groq_client
+
+def _get_cerebras_client() -> Optional[OpenAI]:
+    global _cerebras_client
+    if _cerebras_client is None:
+        api_key = os.environ.get("CEREBRAS_API_KEY")
+        if not api_key:
+            return None
+        _cerebras_client = OpenAI(
+            api_key=api_key,
+            base_url="https://api.cerebras.ai/v1",
+        )
+    return _cerebras_client
+
+def _get_openrouter_client() -> Optional[OpenAI]:
+    global _openrouter_client
+    if _openrouter_client is None:
+        api_key = os.environ.get("OPENROUTER_API_KEY")
+        if not api_key:
+            return None
+        _openrouter_client = OpenAI(
+            api_key=api_key,
+            base_url="https://openrouter.ai/api/v1",
+        )
+    return _openrouter_client
+
+def _is_rate_limit(err: str) -> bool:
+    return "429" in err or "rate_limit_exceeded" in err.lower()
+
+def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: float = 0) -> str:
+    """Call Groq → Cerebras → OpenRouter, falling back on 429 at each step."""
+    # ── 1. Groq ───────────────────────────────────────────────────────
+    try:
+        response = get_client().chat.completions.create(
+            model=model, messages=messages,
+            max_tokens=max_tokens, temperature=temperature,
+        )
+        return response.choices[0].message.content.strip()
+    except Exception as e:
+        if not _is_rate_limit(str(e)):
+            raise
+        logger.warning('"event":"groq_rate_limit","action":"trying_cerebras"')
+
+    # ── 2. Cerebras ───────────────────────────────────────────────────
+    cb_client = _get_cerebras_client()
+    if cb_client is not None:
+        try:
+            fb_model = _CEREBRAS_MODEL_MAP.get(model, "llama3.3-70b")
+            logger.info(f'"event":"cerebras_fallback","model":"{fb_model}"')
+            response = cb_client.chat.completions.create(
+                model=fb_model, messages=messages,
+                max_tokens=max_tokens, temperature=temperature,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            if not _is_rate_limit(str(e)):
+                raise
+            logger.warning('"event":"cerebras_rate_limit","action":"trying_openrouter"')
+
+    # ── 3. OpenRouter ─────────────────────────────────────────────────
+    or_client = _get_openrouter_client()
+    if or_client is not None:
+        fb_model = _OPENROUTER_MODEL_MAP.get(model, "meta-llama/llama-3.3-70b-instruct:free")
+        logger.info(f'"event":"openrouter_fallback","model":"{fb_model}"')
+        response = or_client.chat.completions.create(
+            model=fb_model, messages=messages,
+            max_tokens=max_tokens, temperature=temperature,
+        )
+        return response.choices[0].message.content.strip()
+
+    raise HTTPException(
+        status_code=429,
+        detail="All AI providers have reached their rate limits. Please wait a few minutes and try again."
+    )
 
 # ─── Auth (OAuth 2.0 + JWT) ───────────────────────────────────────────
 
@@ -487,17 +572,15 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
     prompt = build_analysis_prompt(body.code, language, body.filename)
 
     try:
-        response = get_client().chat.completions.create(
+        raw_text = call_llm(
             model="llama-3.3-70b-versatile",
-            max_tokens=8000,
-            temperature=0,           # deterministic — same code → same issues every time
             messages=[
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
+            max_tokens=8000,
+            temperature=0,
         )
-
-        raw_text = response.choices[0].message.content.strip()
         # Strip markdown fences if LLM wraps JSON in ```json ... ```
         raw_text = re.sub(r"^```[^\n]*\n", "", raw_text)
         raw_text = re.sub(r"\n```\s*$", "", raw_text)
@@ -541,7 +624,7 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
         if "429" in err or "rate_limit_exceeded" in err:
             raise HTTPException(
                 status_code=429,
-                detail="Groq API daily token limit reached (100K/day on free tier). Please wait ~1 hour and try again, or upgrade at console.groq.com/settings/billing"
+                detail="All AI providers have reached their rate limits. Please wait a few minutes and try again."
             )
         raise HTTPException(status_code=500, detail=f"Analysis failed: {err}")
 
@@ -567,39 +650,36 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         text = re.sub(r"\s*```$", "", text)
         return text.strip()
 
-    # llama-3.1-8b-instant: 500K tokens/day free vs 100K for the 70B model.
-    # Fix operations work well with the 8B model given our explicit prompts;
-    # analysis keeps the 70B for maximum detection quality.
-    FIX_MODEL    = "llama-3.1-8b-instant"
+    FIX_MODEL     = "llama-3.1-8b-instant"
     ANALYZE_MODEL = "llama-3.3-70b-versatile"
 
     def _llm_fix(source: str, issue_list: List[Any]) -> str:
-        """Single LLM fix pass using the high-TPD 8B model."""
+        """Single LLM fix pass."""
         p = build_fix_prompt(source, body.language, issue_list)
-        r = get_client().chat.completions.create(
+        raw = call_llm(
             model=FIX_MODEL,
-            max_tokens=8000,   # 8K is sufficient for most files; saves tokens vs 16K
-            temperature=0,
             messages=[
                 {"role": "system", "content": FIX_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
+            max_tokens=8000,
+            temperature=0,
         )
-        return _strip_fences(r.choices[0].message.content.strip())
+        return _strip_fences(raw)
 
     def _llm_analyze(source: str) -> List[Any]:
         """Re-analysis after pass 1 — only used if critical/warning issues survive."""
         p = build_analysis_prompt(source, body.language)
-        r = get_client().chat.completions.create(
+        raw = call_llm(
             model=ANALYZE_MODEL,
-            max_tokens=8000,
-            temperature=0,
             messages=[
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
+            max_tokens=8000,
+            temperature=0,
         )
-        raw = _strip_fences(r.choices[0].message.content.strip())
+        raw = _strip_fences(raw)
         try:
             return json.loads(raw).get("issues", [])
         except Exception:
@@ -628,7 +708,7 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         if "429" in err or "rate_limit_exceeded" in err:
             raise HTTPException(
                 status_code=429,
-                detail="Groq API daily token limit reached. Please wait ~1 hour and try again, or upgrade your Groq plan at console.groq.com/settings/billing"
+                detail="All AI providers have reached their rate limits. Please wait a few minutes and try again."
             )
         raise HTTPException(status_code=500, detail=f"Fix failed: {err}")
 

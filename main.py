@@ -88,7 +88,7 @@ _CEREBRAS_MODEL_MAP = {
 }
 _OPENROUTER_MODEL_MAP = {
     "llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct:free",
-    "llama-3.1-8b-instant":    "meta-llama/llama-3.1-8b-instruct:free",
+    "llama-3.1-8b-instant":    "meta-llama/llama-3.3-70b-instruct:free",  # 8B not available free; use 70B
 }
 
 def get_client() -> Groq:
@@ -584,7 +584,7 @@ async def check_providers():
     else:
         try:
             or_c.chat.completions.create(
-                model="meta-llama/llama-3.1-8b-instruct:free", messages=TEST_MESSAGES,
+                model="meta-llama/llama-3.3-70b-instruct:free", messages=TEST_MESSAGES,
                 max_tokens=5, temperature=0,
             )
             results["openrouter"] = "ok"

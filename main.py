@@ -83,8 +83,8 @@ _cerebras_client: Optional[OpenAI] = None
 _openrouter_client: Optional[OpenAI] = None
 
 _CEREBRAS_MODEL_MAP = {
-    "llama-3.3-70b-versatile": "llama3.3-70b",
-    "llama-3.1-8b-instant":    "llama3.1-8b",
+    "llama-3.3-70b-versatile": "llama-3.3-70b",
+    "llama-3.1-8b-instant":    "llama-3.1-8b",
 }
 _OPENROUTER_MODEL_MAP = {
     "llama-3.3-70b-versatile": "meta-llama/llama-3.3-70b-instruct:free",
@@ -153,9 +153,7 @@ def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: fl
             )
             return response.choices[0].message.content.strip()
         except Exception as e:
-            if not _is_rate_limit(str(e)):
-                raise
-            logger.warning('"event":"cerebras_rate_limit","action":"trying_openrouter"')
+            logger.warning(f'"event":"cerebras_error","error":"{str(e)[:120]}","action":"trying_openrouter"')
 
     # ── 3. OpenRouter ─────────────────────────────────────────────────
     or_client = _get_openrouter_client()

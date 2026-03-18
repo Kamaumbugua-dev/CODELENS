@@ -536,8 +536,14 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
         logger.error(f'"event":"parse_error","ip":"{ip}","error":"{str(e)}"')
         raise HTTPException(status_code=500, detail=f"Failed to parse analysis response: {str(e)}")
     except Exception as e:
-        logger.error(f'"event":"analyze_error","ip":"{ip}","error":"{str(e)}"')
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        err = str(e)
+        logger.error(f'"event":"analyze_error","ip":"{ip}","error":"{err}"')
+        if "429" in err or "rate_limit_exceeded" in err:
+            raise HTTPException(
+                status_code=429,
+                detail="Groq API daily token limit reached (100K/day on free tier). Please wait ~1 hour and try again, or upgrade at console.groq.com/settings/billing"
+            )
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {err}")
 
 @app.post("/fix")
 @limiter.limit("5/minute;20/hour")
@@ -561,12 +567,18 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         text = re.sub(r"\s*```$", "", text)
         return text.strip()
 
+    # llama-3.1-8b-instant: 500K tokens/day free vs 100K for the 70B model.
+    # Fix operations work well with the 8B model given our explicit prompts;
+    # analysis keeps the 70B for maximum detection quality.
+    FIX_MODEL    = "llama-3.1-8b-instant"
+    ANALYZE_MODEL = "llama-3.3-70b-versatile"
+
     def _llm_fix(source: str, issue_list: List[Any]) -> str:
-        """Single LLM fix pass. Returns cleaned fixed code."""
+        """Single LLM fix pass using the high-TPD 8B model."""
         p = build_fix_prompt(source, body.language, issue_list)
         r = get_client().chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            max_tokens=16000,          # doubled — prevents output truncation on large files
+            model=FIX_MODEL,
+            max_tokens=8000,   # 8K is sufficient for most files; saves tokens vs 16K
             temperature=0,
             messages=[
                 {"role": "system", "content": FIX_SYSTEM_PROMPT},
@@ -576,10 +588,10 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         return _strip_fences(r.choices[0].message.content.strip())
 
     def _llm_analyze(source: str) -> List[Any]:
-        """Quick re-analysis to find any issues that survived the first fix pass."""
+        """Re-analysis after pass 1 — only used if critical/warning issues survive."""
         p = build_analysis_prompt(source, body.language)
         r = get_client().chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=ANALYZE_MODEL,
             max_tokens=8000,
             temperature=0,
             messages=[
@@ -598,19 +610,27 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
         fixed = _llm_fix(body.code, body.issues)
         logger.info(f'"event":"fix_pass1_complete","ip":"{ip}"')
 
-        # ── Pass 2: re-analyse the fixed code and fix anything left over
+        # ── Pass 2 (only if critical/warning issues survive) ──────────
+        # Info-only leftovers don't warrant another expensive LLM call.
         remaining = _llm_analyze(fixed)
-        if remaining:
-            logger.info(f'"event":"fix_pass2_start","ip":"{ip}","remaining_issues":{len(remaining)}')
-            fixed = _llm_fix(fixed, remaining)
+        serious   = [i for i in remaining if i.get("severity") in ("critical", "warning")]
+        if serious:
+            logger.info(f'"event":"fix_pass2_start","ip":"{ip}","remaining_serious":{len(serious)}')
+            fixed = _llm_fix(fixed, serious)
             logger.info(f'"event":"fix_pass2_complete","ip":"{ip}"')
 
         logger.info(f'"event":"fix_complete","ip":"{ip}","issues_resolved":{len(body.issues)}')
         return {"fixed_code": fixed, "language": body.language, "issues_resolved": len(body.issues)}
 
     except Exception as e:
-        logger.error(f'"event":"fix_error","ip":"{ip}","error":"{str(e)}"')
-        raise HTTPException(status_code=500, detail=f"Fix failed: {str(e)}")
+        err = str(e)
+        logger.error(f'"event":"fix_error","ip":"{ip}","error":"{err}"')
+        if "429" in err or "rate_limit_exceeded" in err:
+            raise HTTPException(
+                status_code=429,
+                detail="Groq API daily token limit reached. Please wait ~1 hour and try again, or upgrade your Groq plan at console.groq.com/settings/billing"
+            )
+        raise HTTPException(status_code=500, detail=f"Fix failed: {err}")
 
 @app.post("/github/fetch")
 @limiter.limit("20/minute")

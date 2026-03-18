@@ -425,6 +425,7 @@ export default function CodeLens() {
   // ── Navigation ────────────────────────────────────────────────────
   const [activePage, setActivePage]       = useState("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [faqOpenIdx, setFaqOpenIdx]         = useState(null);
 
   // ── History ───────────────────────────────────────────────────────
   const [analysisHistory, setAnalysisHistory] = useState(() => {
@@ -1192,7 +1193,8 @@ export default function CodeLens() {
 
   // ─── FAQ Page ─────────────────────────────────────────────────────
   const renderFaqPage = () => {
-    const [openIdx, setOpenIdx] = useState(null);
+    const openIdx = faqOpenIdx;
+    const setOpenIdx = setFaqOpenIdx;
     const faqs = [
       {
         q: "What is CodeLens and how does it work?",

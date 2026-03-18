@@ -128,8 +128,21 @@ def _is_rate_limit(err: str) -> bool:
     return "429" in err or "rate_limit_exceeded" in err.lower()
 
 def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: float = 0) -> str:
-    """Call Groq → Cerebras → OpenRouter, falling back on 429 at each step."""
-    # ── 1. Groq ───────────────────────────────────────────────────────
+    """Call Cerebras (2000 TPS) → Groq → OpenRouter, falling back on any error."""
+    # ── 1. Cerebras — fastest (2000 TPS, 1M tokens/day) ───────────────
+    cb_client = _get_cerebras_client()
+    if cb_client is not None:
+        try:
+            cb_model = _CEREBRAS_MODEL_MAP.get(model, "llama-3.3-70b")
+            response = cb_client.chat.completions.create(
+                model=cb_model, messages=messages,
+                max_tokens=max_tokens, temperature=temperature,
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            logger.warning(f'"event":"cerebras_error","error":"{str(e)[:120]}","action":"trying_groq"')
+
+    # ── 2. Groq ────────────────────────────────────────────────────────
     try:
         response = get_client().chat.completions.create(
             model=model, messages=messages,
@@ -139,23 +152,9 @@ def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: fl
     except Exception as e:
         if not _is_rate_limit(str(e)):
             raise
-        logger.warning('"event":"groq_rate_limit","action":"trying_cerebras"')
+        logger.warning('"event":"groq_rate_limit","action":"trying_openrouter"')
 
-    # ── 2. Cerebras ───────────────────────────────────────────────────
-    cb_client = _get_cerebras_client()
-    if cb_client is not None:
-        try:
-            fb_model = _CEREBRAS_MODEL_MAP.get(model, "llama3.3-70b")
-            logger.info(f'"event":"cerebras_fallback","model":"{fb_model}"')
-            response = cb_client.chat.completions.create(
-                model=fb_model, messages=messages,
-                max_tokens=max_tokens, temperature=temperature,
-            )
-            return response.choices[0].message.content.strip()
-        except Exception as e:
-            logger.warning(f'"event":"cerebras_error","error":"{str(e)[:120]}","action":"trying_openrouter"')
-
-    # ── 3. OpenRouter ─────────────────────────────────────────────────
+    # ── 3. OpenRouter ──────────────────────────────────────────────────
     or_client = _get_openrouter_client()
     if or_client is not None:
         fb_model = _OPENROUTER_MODEL_MAP.get(model, "meta-llama/llama-3.3-70b-instruct:free")

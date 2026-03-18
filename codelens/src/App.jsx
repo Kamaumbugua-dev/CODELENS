@@ -663,7 +663,7 @@ export default function CodeLens() {
               display:"flex", alignItems:"center", justifyContent:"center", gap:9,
               boxShadow: reworking ? "none" : `0 4px 24px rgba(0,212,255,0.1), inset 0 1px 0 rgba(0,212,255,0.15)`,
             }}>
-              {reworking ? <><span style={{ animation:"spin 1s linear infinite", display:"inline-block" }}>⟨/⟩</span> Reworking with AI...</> : <>✦ Rework Code with AI Fixes</>}
+              {reworking ? <><span style={{ animation:"spin 1s linear infinite", display:"inline-block" }}>⟨/⟩</span> Fixing all issues — 2-pass AI…</> : <>✦ Rework Code — Fix All Issues</>}
             </button>
             <p style={{ fontSize:9, color:"rgba(255,255,255,0.12)", textAlign:"center", marginTop:6,
               fontFamily:"'JetBrains Mono',monospace", letterSpacing:1.2 }}>

@@ -309,20 +309,24 @@ STRICT RULES:
 - Do NOT skip any line — inspect the entire file.
 - Return ONLY valid JSON. No markdown, no code fences, no text outside the JSON object."""
 
-FIX_SYSTEM_PROMPT = """You are an expert software security engineer and code optimizer. You will receive code along with a complete list of issues. You MUST fix every single issue listed and also fix any additional problems you notice that were not listed.
+FIX_SYSTEM_PROMPT = """You are an expert software security engineer and code optimizer. Your sole job is to return a COMPLETE, FULLY FIXED version of the code you receive.
 
-FIXING RULES:
-- Fix every listed issue completely — do not partially address anything.
-- Also fix any syntax errors, typos, or obvious bugs you notice independently.
-- Optimise algorithmic complexity wherever possible (replace O(n²) with O(n log n), etc.).
-- Replace all unsafe patterns: use parameterised queries, context managers, validated input, safe crypto.
-- Remove hardcoded credentials and replace with os.environ.get() calls.
-- Add missing null/None/zero guards where needed.
-- Close all resources properly using context managers (with statements).
-- Do NOT remove any business logic or functionality — only make it safe, correct, and efficient.
-- Add a brief inline comment prefixed with # FIX: (or // FIX: for JS/TS/Java/Go) on each changed line explaining what was fixed.
+ABSOLUTE RULES — violating any of these is a failure:
+1. OUTPUT COMPLETENESS: Output the entire file from the first line to the last. Never use "..." or "[rest of code unchanged]" or any placeholder. Every single line must appear in your output.
+2. FIX EVERY ISSUE: Every issue in the provided list must be fixed. Do not skip, defer, or partially fix anything.
+3. ALSO SELF-REVIEW: After applying all listed fixes, scan your own output for any remaining issues not in the list and fix those too.
+4. PRESERVE FUNCTIONALITY: Do not remove business logic, change function signatures arbitrarily, or alter correct behaviour.
+5. ANNOTATION: On each line you change, add an inline comment — # FIX: <brief reason> (Python/Ruby) or // FIX: <brief reason> (JS/TS/Java/Go/C/C++) — immediately after the changed code.
 
-Return RAW CODE ONLY. No markdown fences, no explanation, no preamble, no postscript."""
+WHAT GOOD FIXES LOOK LIKE:
+- SQL injection  → parameterised query:  cursor.execute("SELECT * FROM users WHERE id=?", (uid,))  # FIX: parameterised query prevents SQL injection
+- Hardcoded cred → env var:             api_key = os.environ.get("API_KEY")  # FIX: removed hardcoded secret
+- Unclosed file  → context manager:     with open(path) as f:  # FIX: context manager ensures file is closed
+- O(n²) loop     → set lookup:          seen = set(items)  # FIX: O(1) lookup replaces O(n) list scan
+- eval()         → safe alternative:    data = json.loads(text)  # FIX: replaced unsafe eval() with json.loads
+- Division       → zero guard:          return total / count if count else 0  # FIX: guard against ZeroDivisionError
+
+Return RAW CODE ONLY. No markdown fences, no triple backticks, no explanation, no preamble, no postscript."""
 
 def add_line_numbers(code: str) -> str:
     lines = code.splitlines()
@@ -372,19 +376,55 @@ CODE (each line is prefixed with its line number):
 Return ONLY the JSON analysis object. No markdown, no explanation outside the JSON."""
 
 def build_fix_prompt(code: str, language: str, issues: List[Any]) -> str:
-    issues_list = "\n".join([
-        f"  - [Line {i.get('line_start', '?')}] [{i.get('severity', '').upper()}] {i.get('title', '')}: {i.get('suggestion', '')}"
-        for i in issues
-    ])
-    return f"""Fix ALL of the following issues in this {language} code:
+    numbered = add_line_numbers(code)
+    total_lines = len(code.splitlines())
 
-ISSUES TO FIX:
-{issues_list}
+    # Build a rich, detailed issue list — not just title+suggestion
+    issue_blocks = []
+    for i in issues:
+        line_ref = str(i.get("line_start", "?"))
+        if i.get("line_end") and i.get("line_end") != i.get("line_start"):
+            line_ref += f"–{i['line_end']}"
+        block = (
+            f"── ISSUE {i.get('id', '?')} [{i.get('severity','').upper()}] "
+            f"[{i.get('category','').upper()}] Line {line_ref} ──\n"
+            f"  Title       : {i.get('title','')}\n"
+            f"  Problem     : {i.get('description','')}\n"
+            f"  Required fix: {i.get('suggestion','')}\n"
+            f"  Risk        : {i.get('predicted_impact','')}"
+        )
+        issue_blocks.append(block)
 
-ORIGINAL CODE:
-{code}
+    issues_detail = "\n\n".join(issue_blocks)
 
-Return the complete fixed code with inline FIX comments."""
+    return f"""You must produce a FULLY FIXED version of the following {language} code ({total_lines} lines).
+There are {len(issues)} issues. Every single one MUST be fixed in your output.
+
+═══════════════════════════ ISSUES TO FIX ═══════════════════════════
+
+{issues_detail}
+
+═══════════════════════════ ORIGINAL CODE ═══════════════════════════
+
+{numbered}
+
+═══════════════════════════ INSTRUCTIONS ════════════════════════════
+
+STEP 1 — Fix each of the {len(issues)} issues listed above, in order:
+  • Apply the required fix exactly as described.
+  • On every changed line, add an inline comment: # FIX: <one-line explanation>
+  • Do NOT skip any issue — fix every single one.
+
+STEP 2 — After fixing all listed issues, read the entire output top-to-bottom:
+  • If you spot any additional bugs, vulnerabilities, or problems NOT in the list above, fix those too.
+  • If any fix from Step 1 introduced a new issue, correct it.
+
+STEP 3 — Output the complete fixed file:
+  • Include EVERY line of the file — do not truncate, do not summarise, do not use "..." placeholders.
+  • Preserve all original business logic and functionality.
+  • The output must be valid, runnable {language} code.
+
+RETURN RAW {language.upper()} CODE ONLY. No markdown fences, no explanation, no preamble."""
 
 # ─── GitHub Integration ───────────────────────────────────────────────
 
@@ -513,27 +553,57 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
 
     logger.info(f'"event":"fix_start","ip":"{ip}","language":"{body.language}","issue_count":{len(body.issues)}')
 
-    prompt = build_fix_prompt(body.code, body.language, body.issues)
+    def _strip_fences(text: str) -> str:
+        """Remove markdown code fences in all their variants."""
+        text = re.sub(r"^```[^\n]*\n", "", text)
+        text = re.sub(r"\n```\s*$", "", text)
+        text = re.sub(r"^```\s*", "", text)
+        text = re.sub(r"\s*```$", "", text)
+        return text.strip()
 
-    try:
-        response = get_client().chat.completions.create(
+    def _llm_fix(source: str, issue_list: List[Any]) -> str:
+        """Single LLM fix pass. Returns cleaned fixed code."""
+        p = build_fix_prompt(source, body.language, issue_list)
+        r = get_client().chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            max_tokens=16000,          # doubled — prevents output truncation on large files
+            temperature=0,
+            messages=[
+                {"role": "system", "content": FIX_SYSTEM_PROMPT},
+                {"role": "user",   "content": p},
+            ],
+        )
+        return _strip_fences(r.choices[0].message.content.strip())
+
+    def _llm_analyze(source: str) -> List[Any]:
+        """Quick re-analysis to find any issues that survived the first fix pass."""
+        p = build_analysis_prompt(source, body.language)
+        r = get_client().chat.completions.create(
             model="llama-3.3-70b-versatile",
             max_tokens=8000,
             temperature=0,
             messages=[
-                {"role": "system", "content": FIX_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
+                {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
+                {"role": "user",   "content": p},
             ],
         )
+        raw = _strip_fences(r.choices[0].message.content.strip())
+        try:
+            return json.loads(raw).get("issues", [])
+        except Exception:
+            return []
 
-        fixed = response.choices[0].message.content.strip()
-        # Robustly strip any markdown code fences the LLM may have added
-        # Handles: ```python\n...\n``` and ```\n...\n``` and ``` ... ```
-        fixed = re.sub(r"^```[^\n]*\n", "", fixed)   # opening fence + language tag
-        fixed = re.sub(r"\n```\s*$", "", fixed)       # closing fence at end
-        fixed = re.sub(r"^```\s*", "", fixed)         # fence with no newline after
-        fixed = re.sub(r"\s*```$", "", fixed)         # fence with no newline before
-        fixed = fixed.strip()
+    try:
+        # ── Pass 1: fix all reported issues ───────────────────────────
+        fixed = _llm_fix(body.code, body.issues)
+        logger.info(f'"event":"fix_pass1_complete","ip":"{ip}"')
+
+        # ── Pass 2: re-analyse the fixed code and fix anything left over
+        remaining = _llm_analyze(fixed)
+        if remaining:
+            logger.info(f'"event":"fix_pass2_start","ip":"{ip}","remaining_issues":{len(remaining)}')
+            fixed = _llm_fix(fixed, remaining)
+            logger.info(f'"event":"fix_pass2_complete","ip":"{ip}"')
 
         logger.info(f'"event":"fix_complete","ip":"{ip}","issues_resolved":{len(body.issues)}')
         return {"fixed_code": fixed, "language": body.language, "issues_resolved": len(body.issues)}

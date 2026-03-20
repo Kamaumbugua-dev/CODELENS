@@ -292,15 +292,23 @@ class FixRequest(BaseModel):
 # ─── Language Detection ───────────────────────────────────────────────
 
 LANGUAGE_HINTS = {
-    "python":     [r"def \w+\(", r"class \w+:", r"self\.", r"elif ", r"__init__"],
-    "kotlin":     [r"fun \w+\(", r"val \w+", r"var \w+", r"data class", r"println\(", r"\?\."],
-    "javascript": [r"const \w+", r"let \w+", r"function \w+", r"=>", r"console\.log"],
-    "typescript": [r"interface \w+", r"type \w+", r": string", r": number", r"<\w+>"],
-    "java":       [r"public class", r"public static void", r"System\.out", r"import java\."],
-    "go":         [r"func \w+\(", r"package \w+", r"fmt\.", r"import \("],
-    "rust":       [r"fn \w+\(", r"let mut", r"impl \w+", r"use \w+::", r"pub fn"],
-    "swift":      [r"func \w+\(", r"var \w+:", r"let \w+:", r"guard ", r"UIViewController"],
-    "csharp":     [r"namespace \w+", r"using System", r"public class", r"static void Main", r"Console\."],
+    "python":     [r"def \w+\(", r"class \w+:", r"self\.", r"elif ", r"__init__", r"import \w+ as "],
+    "kotlin":     [r"fun \w+\(", r"val \w+\s*=", r"var \w+\s*:", r"data class \w+", r"\?\.", r"object \w+"],
+    "javascript": [r"const \w+\s*=", r"let \w+\s*=", r"function \w+\s*\(", r"=>\s*\{", r"console\.log"],
+    "typescript": [r"interface \w+\s*\{", r":\s*string", r":\s*number", r":\s*boolean", r"as \w+", r"<\w+>"],
+    "java":       [r"public class \w+", r"public static void main", r"System\.out\.", r"@Override", r"throws \w+"],
+    "go":         [r"func \w+\(.*\)", r"^package \w+", r"fmt\.\w+\(", r":=", r"goroutine"],
+    "rust":       [r"fn \w+\(", r"let mut \w+", r"impl \w+", r"use \w+::", r"pub fn \w+", r"match \w+"],
+    "swift":      [r"func \w+\(.*\) ->", r"var \w+:\s*\w+", r"let \w+:\s*\w+", r"guard let", r"if let"],
+    "csharp":     [r"namespace \w+", r"using System", r"static void Main", r"Console\.\w+\(", r"public \w+ \w+\("],
+    "ruby":       [r"def \w+", r"end$", r"puts ", r"require ", r"attr_\w+"],
+    "php":        [r"<\?php", r"\$\w+\s*=", r"echo ", r"function \w+\s*\(", r"->", r"namespace \w+"],
+    "cpp":        [r"#include\s*<", r"std::", r"int main\s*\(", r"cout\s*<<", r"nullptr", r"::\w+"],
+    "c":          [r"#include\s*<", r"int main\s*\(", r"printf\s*\(", r"malloc\s*\(", r"->"],
+    "scala":      [r"object \w+", r"def \w+.*=", r"val \w+.*=", r"case class", r"extends \w+"],
+    "bash":       [r"#!/bin/(bash|sh)", r"\$\w+", r"echo ", r"if \[", r"fi$", r"then$"],
+    "sql":        [r"SELECT .* FROM", r"INSERT INTO", r"CREATE TABLE", r"WHERE \w+", r"JOIN \w+"],
+    "r":          [r"<-\s*\w+", r"library\(", r"data\.frame\(", r"ggplot\(", r"function\s*\("],
 }
 
 def detect_language(code: str, filename: Optional[str] = None) -> str:
@@ -309,8 +317,10 @@ def detect_language(code: str, filename: Optional[str] = None) -> str:
             ".py": "python", ".js": "javascript", ".ts": "typescript",
             ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
             ".go": "go", ".rs": "rust", ".rb": "ruby", ".php": "php",
-            ".cs": "csharp", ".cpp": "cpp", ".c": "c", ".swift": "swift",
-            ".kt": "kotlin", ".kts": "kotlin",
+            ".cs": "csharp", ".cpp": "cpp", ".cc": "cpp", ".c": "c",
+            ".swift": "swift", ".kt": "kotlin", ".kts": "kotlin",
+            ".scala": "scala", ".sh": "bash", ".bash": "bash",
+            ".sql": "sql", ".r": "r", ".R": "r",
         }
         for ext, lang in ext_map.items():
             if filename.endswith(ext):
@@ -403,7 +413,19 @@ ABSOLUTE RULES — violating any of these is a failure:
 3. ALSO SELF-REVIEW: After applying all listed fixes, scan your own output for any remaining issues not in the list and fix those too.
 4. PRESERVE FUNCTIONALITY: Do not remove business logic, change function signatures arbitrarily, or alter correct behaviour.
 5. ANNOTATION: On each line you change, add an inline comment — # FIX: <brief reason> (Python/Ruby) or // FIX: <brief reason> (JS/TS/Java/Go/C/C++/Kotlin) — immediately after the changed code.
-6. COMPILABLE OUTPUT: The fixed code MUST compile and run without errors. Do not introduce new compilation errors. For Kotlin: val properties cannot be reassigned — use copy() or change to var. For Kotlin: you cannot synchronize on primitives (Int, Long) — use AtomicInteger or a dedicated lock object instead.
+6. COMPILABLE OUTPUT: The fixed code MUST compile and run without errors. Never introduce new compilation or runtime errors. Language-specific rules you MUST follow:
+   • Python   — use correct indentation; f-strings over % formatting; close resources with 'with'
+   • Kotlin   — val is immutable: use .copy() to modify data class fields, not direct assignment; never synchronize on Int/Long — use AtomicInteger or a ReentrantLock
+   • Java     — always close resources in try-with-resources; use PreparedStatement for all SQL
+   • JavaScript/TypeScript — use strict equality (===); handle Promise rejections; no var
+   • Go       — check all error return values; close resources with defer
+   • Rust     — handle Result/Option explicitly; no unwrap() on untrusted data
+   • C/C++    — free every malloc; check array bounds; no gets(), use fgets()
+   • Swift    — use guard let / if let for optionals; avoid force unwrap (!)
+   • C#       — use using statements for IDisposable; async methods must return Task
+   • PHP      — use PDO with prepared statements; never trust $_GET/$_POST directly
+   • Ruby     — use strong parameters; sanitise user input before DB queries
+   • SQL      — use parameterised queries; never concatenate user input into SQL strings
 
 WHAT GOOD FIXES LOOK LIKE:
 - SQL injection  → parameterised query:  cursor.execute("SELECT * FROM users WHERE id=?", (uid,))  # FIX: parameterised query prevents SQL injection
@@ -637,7 +659,8 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
         raw_text = raw_text.strip()
 
         analysis = json.loads(raw_text)
-        analysis["language"] = language
+        # Prefer LLM's language detection; fall back to our regex result
+        analysis["language"] = analysis.get("language") or language
 
         # ── Server-side overrides for consistency ──────────────
         issues = analysis.get("issues", [])

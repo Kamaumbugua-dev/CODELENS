@@ -1461,7 +1461,7 @@ export default function CodeLens() {
         a { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
         .hamburger { background:none; border:none; cursor:pointer; padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; transition:all 0.2s; min-width:44px; min-height:44px; touch-action:manipulation; -webkit-tap-highlight-color:transparent; position:relative; z-index:1; transform:translateZ(0); }
         .hamburger:hover { background:rgba(255,255,255,0.06); }
-        .page-scroll { overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
+        .page-scroll { overflow-y:auto; flex:1; overscroll-behavior:contain; }
         .page-scroll::-webkit-scrollbar { width:4px; }
         .page-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.07); border-radius:3px; }
       `}</style>

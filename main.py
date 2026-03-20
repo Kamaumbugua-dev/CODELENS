@@ -366,11 +366,11 @@ OUTPUT FORMAT — return ONLY this exact JSON, nothing else:
       "severity": "critical" | "warning" | "info",
       "category": "bug" | "security" | "performance" | "code_smell" | "best_practice",
       "title": "Short precise title (max 8 words)",
-      "description": "Clear explanation of the exact problem and why it is dangerous or harmful",
+      "description": "Exact problem and why it is harmful (max 20 words)",
       "line_start": <integer — the exact line number from the numbered code>,
       "line_end": <integer — same as line_start if single line>,
-      "suggestion": "Concrete corrected code snippet or precise fix instruction",
-      "predicted_impact": "Specific consequence if left unfixed: data breach / crash / OOM / slowdown etc."
+      "suggestion": "Concrete fix in one line of code or one sentence (max 20 words)",
+      "predicted_impact": "Consequence if unfixed (max 10 words)"
     }
   ],
   "metrics": {
@@ -621,7 +621,7 @@ async def analyze_code(request: Request, body: AnalyzeRequest, user: dict = Depe
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user", "content": prompt},
             ],
-            max_tokens=6000,
+            max_tokens=8000,
             temperature=0,
         )
         # Strip markdown fences if LLM wraps JSON in ```json ... ```
@@ -705,7 +705,7 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
                 {"role": "system", "content": FIX_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
-            max_tokens=6000,
+            max_tokens=8000,
             temperature=0,
         )
         return _strip_fences(raw)
@@ -719,7 +719,7 @@ async def fix_code(request: Request, body: FixRequest, user: dict = Depends(get_
                 {"role": "system", "content": ANALYSIS_SYSTEM_PROMPT},
                 {"role": "user",   "content": p},
             ],
-            max_tokens=6000,
+            max_tokens=8000,
             temperature=0,
         )
         raw = _strip_fences(raw)

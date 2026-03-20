@@ -560,7 +560,7 @@ export default function CodeLens() {
 
   const scoreColor = analysis ? (analysis.health_score >= 80 ? T.emerald : analysis.health_score >= 60 ? "#84CC16" : analysis.health_score >= 40 ? T.amber : T.pink) : null;
   const HEADER_H   = isMobile ? 56 : 66;
-  const BOTTOM_BAR = isMobile ? 78 : 0;
+  const BOTTOM_BAR = isMobile ? 60 : 0;
 
   // ── Glass panel style ──────────────────────────────────────────────
   const GLASS = {
@@ -1605,53 +1605,9 @@ export default function CodeLens() {
               ) : (
                 <UserAvatar user={authUser} onSignOut={handleSignOut} isMobile={isMobile}/>
               )}
-              {/* Mobile hamburger */}
-              {isMobile && (
-                <button className="hamburger"
-                  onClick={() => setMobileMenuOpen(o => !o)}
-                  style={{ touchAction:"manipulation", WebkitTapHighlightColor:"transparent" }}>
-                  {[0,1,2].map(i => (
-                    <div key={i} style={{ width:22, height:2, borderRadius:2, background: mobileMenuOpen && i===1 ? "transparent" : "rgba(255,255,255,0.75)",
-                      transition:"all 0.25s",
-                      transform: mobileMenuOpen ? (i===0 ? "rotate(45deg) translate(5px,5px)" : i===2 ? "rotate(-45deg) translate(5px,-5px)" : "none") : "none",
-                    }}/>
-                  ))}
-                </button>
-              )}
             </div>
           </div>
 
-          {/* Mobile dropdown menu */}
-          {isMobile && mobileMenuOpen && (
-            <div style={{ borderTop:"1px solid rgba(255,255,255,0.07)", padding:"10px 14px 16px",
-              display:"flex", flexDirection:"column", gap:4, animation:"fadeUp 0.2s ease" }}>
-              {[
-                { key:"home",     label:"Home",         icon:"⌂" },
-                { key:"analyze",  label:"Analyze Code", icon:"⟨/⟩" },
-                { key:"history",  label:"History",      icon:"⏱" },
-                { key:"about",    label:"About",        icon:"◈" },
-                { key:"services", label:"Services",     icon:"◇" },
-                { key:"faq",      label:"FAQ",          icon:"?" },
-                { key:"contact",  label:"Contact",      icon:"✉" },
-              ].map(({ key, label, icon }) => (
-                <button key={key}
-                  onClick={() => { setActivePage(key); setMobileMenuOpen(false); }}
-                  style={{
-                  display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderRadius:12,
-                  background: activePage === key ? "rgba(0,212,255,0.08)" : "rgba(255,255,255,0.025)",
-                  border:`1px solid ${activePage === key ? "rgba(0,212,255,0.22)" : "rgba(255,255,255,0.06)"}`,
-                  color: activePage === key ? T.cyan : "rgba(255,255,255,0.65)",
-                  fontSize:15, fontWeight:600, fontFamily:"'Space Grotesk',sans-serif",
-                  cursor:"pointer", transition:"all 0.2s", textAlign:"left",
-                  width:"100%", minHeight:52, touchAction:"manipulation", WebkitTapHighlightColor:"transparent",
-                }}>
-                  <span style={{ fontSize:16, width:22, textAlign:"center" }}>{icon}</span>
-                  {label}
-                  {activePage === key && <span style={{ marginLeft:"auto", fontSize:10, color:T.cyan }}>●</span>}
-                </button>
-              ))}
-            </div>
-          )}
         </header>
 
         {/* ── Main Content ───────────────────────────────────── */}
@@ -1724,6 +1680,50 @@ export default function CodeLens() {
               {/* MOBILE < 640px */}
               {isMobile && (
                 <div style={{ flex:1, display:"flex", flexDirection:"column", overflow:"hidden", ...GLASS }}>
+                  {/* Panel tabs + Analyze button */}
+                  <div style={{ flexShrink:0, display:"flex", alignItems:"center", gap:8, padding:"8px 12px", borderBottom:"1px solid rgba(255,255,255,0.07)", background:"rgba(0,0,0,0.2)" }}>
+                    <div style={{ display:"flex", flex:1, gap:6 }}>
+                      {[
+                        { key:"editor",   label:"Editor",  badge:null },
+                        { key:"analysis", label:"Results", badge:analysis?.total_issues },
+                        { key:"slides",   label:"Slides",  badge:null, disabled:!analysis },
+                      ].map(({ key, label, badge, disabled }) => (
+                        <button key={key} onClick={() => !disabled && setMobilePanel(key)} style={{
+                          flex:1, padding:"6px 4px", borderRadius:10, border:"1px solid",
+                          borderColor: mobilePanel===key ? "rgba(0,212,255,0.35)" : "rgba(255,255,255,0.08)",
+                          background: mobilePanel===key ? "rgba(0,212,255,0.14)" : "rgba(255,255,255,0.03)",
+                          color: mobilePanel===key ? T.cyan : "rgba(255,255,255,0.4)",
+                          fontSize:10, fontWeight:700, fontFamily:"'JetBrains Mono',monospace",
+                          cursor: disabled ? "default" : "pointer", opacity: disabled ? 0.3 : 1,
+                          position:"relative", transition:"all 0.2s",
+                        }}>
+                          {label}
+                          {badge > 0 && <span style={{ position:"absolute", top:2, right:3, background:T.pink, color:"#fff", fontSize:7, fontWeight:800, padding:"1px 3px", borderRadius:4 }}>{badge}</span>}
+                        </button>
+                      ))}
+                    </div>
+                    {isSignedIn ? (
+                      <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()} style={{
+                        padding:"6px 14px", borderRadius:12, border:"none", flexShrink:0,
+                        background: loading ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg,#00D4FF,#7C3AED)",
+                        color: loading ? "rgba(255,255,255,0.25)" : "#fff",
+                        fontSize:11, fontWeight:800, fontFamily:"'Outfit',sans-serif",
+                        cursor: loading ? "wait" : "pointer", transition:"all 0.2s",
+                        animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
+                      }}>{loading ? "Scanning…" : "Analyze →"}</button>
+                    ) : (
+                      <button onClick={() => setShowAuthModal(true)} style={{
+                        padding:"6px 14px", borderRadius:12, flexShrink:0,
+                        border:"1px solid rgba(0,212,255,0.28)", cursor:"pointer",
+                        background:"rgba(0,212,255,0.07)", color:T.cyan,
+                        fontSize:11, fontWeight:700, fontFamily:"'Outfit',sans-serif",
+                      }}>Sign In →</button>
+                    )}
+                    <label style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:1, cursor:"pointer", flexShrink:0 }}>
+                      <input type="checkbox" checked={useMock} onChange={e => setUseMock(e.target.checked)} style={{ accentColor:T.cyan, width:14, height:14 }}/>
+                      <span style={{ fontSize:7, color:"rgba(255,255,255,0.12)", fontFamily:"'JetBrains Mono',monospace" }}>demo</span>
+                    </label>
+                  </div>
                   {mobilePanel === "editor"   && renderEditor()}
                   {mobilePanel === "analysis" && ((analysis||loading) ? renderAnalysis() : renderEmpty())}
                   {mobilePanel === "slides"   && (analysis ? renderSlides() : renderEmpty())}
@@ -1733,72 +1733,44 @@ export default function CodeLens() {
           )}
         </div>
 
-        {/* ── Mobile Bottom Bar (analyze page only) ──────────── */}
-        {isMobile && activePage === "analyze" && (
-          <div style={{
-            flexShrink:0, zIndex:200,
-            background:"rgba(2,6,14,0.88)",
-            backdropFilter:"blur(60px) saturate(200%)", WebkitBackdropFilter:"blur(60px) saturate(200%)",
-            borderTop:"1px solid rgba(255,255,255,0.08)",
-            boxShadow:"0 -4px 30px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.06)",
-            padding:"9px 12px max(10px, env(safe-area-inset-bottom))",
-            display:"flex", alignItems:"center", gap:7,
+
+        {/* ── Mobile Bottom Navigation ───────────────────────── */}
+        {isMobile && (
+          <nav style={{
+            flexShrink:0, zIndex:300,
+            background:"rgba(3,8,18,0.98)",
+            borderTop:"1px solid rgba(255,255,255,0.1)",
+            boxShadow:"0 -1px 0 rgba(255,255,255,0.04), 0 -8px 32px rgba(0,0,0,0.6)",
+            paddingBottom:"max(6px, env(safe-area-inset-bottom))",
+            display:"flex", alignItems:"stretch",
           }}>
             {[
-              { key:"editor",   label:"Editor",   icon:"⟨/⟩", badge:null,                    disabled:false },
-              { key:"analysis", label:"Analysis",  icon:"◎",   badge:analysis?.total_issues,  disabled:false },
-              { key:"slides",   label:"Slides",    icon:"▣",   badge:null,                    disabled:!analysis },
-            ].map(({ key, label, icon, badge, disabled }) => (
-              <button key={key} onClick={() => !disabled && setMobilePanel(key)} style={{
-                flex:1, padding:"7px 4px", borderRadius:13, border:"1px solid",
-                borderColor: mobilePanel === key ? "rgba(0,212,255,0.3)" : "rgba(255,255,255,0.06)",
-                background: mobilePanel === key
-                  ? "linear-gradient(135deg,rgba(0,212,255,0.14),rgba(139,92,246,0.1))"
-                  : "rgba(255,255,255,0.025)",
-                cursor: disabled ? "default" : "pointer",
-                display:"flex", flexDirection:"column", alignItems:"center", gap:3,
-                opacity: disabled ? 0.3 : 1, transition:"all 0.2s ease",
-                backdropFilter:"blur(16px)", position:"relative",
-                boxShadow: mobilePanel === key ? `inset 0 1px 0 rgba(0,212,255,0.15), 0 0 15px rgba(0,212,255,0.08)` : "none",
+              { key:"home",    label:"Home",    icon:"⌂" },
+              { key:"analyze", label:"Analyze", icon:"⟨/⟩" },
+              { key:"history", label:"History", icon:"⏱" },
+              { key:"faq",     label:"FAQ",     icon:"?" },
+              { key:"contact", label:"Contact", icon:"✉" },
+            ].map(({ key, label, icon }) => (
+              <button key={key} onClick={() => setActivePage(key)} style={{
+                flex:1, display:"flex", flexDirection:"column", alignItems:"center",
+                justifyContent:"center", gap:3, padding:"10px 2px 6px",
+                background:"none", border:"none", cursor:"pointer", position:"relative",
+                color: activePage===key ? T.cyan : "rgba(255,255,255,0.32)",
+                transition:"color 0.18s",
               }}>
-                <span style={{ fontSize:13, filter: mobilePanel === key ? `drop-shadow(0 0 8px ${T.cyan})` : "none", transition:"filter 0.2s" }}>{icon}</span>
-                <span style={{ fontSize:9, fontWeight:700, color: mobilePanel === key ? T.cyan : "rgba(255,255,255,0.25)",
-                  fontFamily:"'JetBrains Mono',monospace", letterSpacing:0.5 }}>{label}</span>
-                {badge > 0 && (
-                  <span style={{ position:"absolute", top:3, right:5, background:T.pink, color:"#fff",
-                    fontSize:8, fontWeight:800, padding:"1px 4px", borderRadius:6,
-                    fontFamily:"'JetBrains Mono',monospace", boxShadow:`0 0 8px ${T.pink}80` }}>{badge}</span>
+                {activePage===key && (
+                  <div style={{ position:"absolute", top:0, left:"50%", transform:"translateX(-50%)",
+                    width:28, height:2, background:T.cyan, borderRadius:"0 0 3px 3px",
+                    boxShadow:`0 0 10px ${T.cyan}` }}/>
                 )}
+                <span style={{ fontSize:22, lineHeight:1,
+                  filter: activePage===key ? `drop-shadow(0 0 6px ${T.cyan})` : "none",
+                  transition:"filter 0.18s" }}>{icon}</span>
+                <span style={{ fontSize:9, fontWeight:700,
+                  fontFamily:"'JetBrains Mono',monospace", letterSpacing:0.3 }}>{label}</span>
               </button>
             ))}
-
-            {isSignedIn ? (
-              <button className="analyze-btn" onClick={handleAnalyze} disabled={loading || !code.trim()} style={{
-                flex:1.7, padding:"9px 6px", borderRadius:14, border:"none",
-                cursor: loading ? "wait" : "pointer",
-                background: loading ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)",
-                color: loading ? "rgba(255,255,255,0.25)" : "#fff",
-                fontSize:12, fontWeight:800, fontFamily:"'Outfit',sans-serif",
-                animation: !loading ? "glowBtn 3s ease-in-out infinite" : "none",
-                transition:"all 0.2s",
-                boxShadow: loading ? "none" : "0 4px 0 rgba(0,0,0,0.3),0 4px 18px rgba(0,212,255,0.3)",
-              }}>{loading ? "Scanning..." : "Analyze →"}</button>
-            ) : (
-              <button onClick={() => setShowAuthModal(true)} style={{
-                flex:1.7, padding:"9px 6px", borderRadius:14,
-                border:"1px solid rgba(0,212,255,0.28)", cursor:"pointer",
-                background:"rgba(0,212,255,0.07)", backdropFilter:"blur(16px)",
-                color:T.cyan, fontSize:12, fontWeight:700, fontFamily:"'Outfit',sans-serif",
-                transition:"all 0.2s",
-              }}>Sign In →</button>
-            )}
-
-            <label style={{ display:"flex", flexDirection:"column", alignItems:"center", gap:2, cursor:"pointer", padding:"4px 2px" }}>
-              <input type="checkbox" checked={useMock} onChange={e => setUseMock(e.target.checked)}
-                style={{ accentColor:T.cyan, width:15, height:15 }}/>
-              <span style={{ fontSize:8, color:"rgba(255,255,255,0.15)", fontFamily:"'JetBrains Mono',monospace" }}>demo</span>
-            </label>
-          </div>
+          </nav>
         )}
 
         {/* ── Auth Modal ─────────────────────────────────────── */}

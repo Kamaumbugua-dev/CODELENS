@@ -10,10 +10,7 @@ import re
 import time
 import logging
 import uuid
-import smtplib
 import httpx
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -641,41 +638,39 @@ async def get_usage():
 @app.post("/contact")
 @limiter.limit("5/hour")
 async def contact(request: Request, body: ContactRequest):
-    """Send a contact form message to axonlattice@gmail.com via Gmail SMTP."""
+    """Send a contact form message to axonlattice@gmail.com via Resend API."""
     if not body.name.strip() or not body.email.strip() or not body.message.strip():
         raise HTTPException(status_code=400, detail="All fields are required.")
 
-    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
-    if not gmail_pass:
+    resend_key = os.environ.get("RESEND_API_KEY")
+    if not resend_key:
         raise HTTPException(status_code=503, detail="Email service not configured.")
 
-    GMAIL_USER = "axonlattice@gmail.com"
-
-    msg = MIMEMultipart("alternative")
-    msg["From"]    = GMAIL_USER
-    msg["To"]      = GMAIL_USER
-    msg["Subject"] = f"CodeLens Contact: {body.name}"
-    msg["Reply-To"] = body.email
-
-    text = (
-        f"Name:    {body.name}\n"
-        f"Email:   {body.email}\n\n"
-        f"Message:\n{body.message}"
-    )
-    msg.attach(MIMEText(text, "plain"))
+    payload = {
+        "from":     "CodeLens <onboarding@resend.dev>",
+        "to":       ["axonlattice@gmail.com"],
+        "reply_to": body.email,
+        "subject":  f"CodeLens Contact: {body.name}",
+        "text":     f"Name:    {body.name}\nEmail:   {body.email}\n\nMessage:\n{body.message}",
+    }
 
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
-            server.starttls()
-            server.login(GMAIL_USER, gmail_pass)
-            server.send_message(msg)
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                "https://api.resend.com/emails",
+                headers={"Authorization": f"Bearer {resend_key}", "Content-Type": "application/json"},
+                json=payload,
+            )
+        if resp.status_code not in (200, 201):
+            logger.error(f'"event":"contact_error","status":{resp.status_code},"body":"{resp.text[:200]}"')
+            raise HTTPException(status_code=502, detail=f"Email service error: {resp.text[:120]}")
         logger.info(f'"event":"contact_sent","from":"{body.email}"')
         return {"success": True}
-    except smtplib.SMTPAuthenticationError:
-        raise HTTPException(status_code=503, detail="Email authentication failed. Check GMAIL_APP_PASSWORD.")
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f'"event":"contact_error","error":"{str(e)}"')
-        raise HTTPException(status_code=500, detail="Failed to send message. Please email us directly.")
+        raise HTTPException(status_code=500, detail=f"Failed to send message: {str(e)}")
 
 @app.get("/providers")
 async def check_providers():

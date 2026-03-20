@@ -480,12 +480,21 @@ export default function CodeLens() {
 
   useEffect(() => { if (analysis && isMobile) setMobilePanel("analysis"); }, [analysis]);
 
-  // ── Token usage polling (every 2 min) ─────────────────────────────
+  // ── Keep Render awake + token usage polling ────────────────────────
+  const [serverReady, setServerReady] = useState(false);
   useEffect(() => {
+    // Warm up the server immediately on mount (prevents cold-start delays)
+    const warmUp = () =>
+      fetch(`${API_BASE}/health`, { cache: "no-store" })
+        .then(() => setServerReady(true))
+        .catch(() => setTimeout(warmUp, 5000)); // retry every 5s if still waking
+    warmUp();
+
+    // Poll usage every 9 min — keeps Render awake (sleeps after 15 min idle)
     const fetchUsage = () =>
       fetch(`${API_BASE}/usage`).then(r => r.json()).then(setUsageData).catch(() => {});
     fetchUsage();
-    const id = setInterval(fetchUsage, 120_000);
+    const id = setInterval(fetchUsage, 540_000); // 9 minutes
     return () => clearInterval(id);
   }, []);
 
@@ -1479,6 +1488,16 @@ export default function CodeLens() {
           <div style={{ position:"absolute", inset:0,
             background:"radial-gradient(ellipse 80% 80% at 50% 50%,transparent 40%,rgba(2,6,12,0.6) 100%)" }}/>
         </div>
+
+        {/* ── Server warm-up banner ───────────────────────────── */}
+        {!serverReady && (
+          <div style={{ background:"rgba(255,140,0,0.12)", borderBottom:"1px solid rgba(255,140,0,0.2)", padding:"6px 20px", display:"flex", alignItems:"center", justifyContent:"center", gap:8 }}>
+            <div style={{ width:6, height:6, borderRadius:"50%", background:"#FF8C00", animation:"pulse 1s ease-in-out infinite" }}/>
+            <span style={{ fontSize:11, color:"rgba(255,180,0,0.8)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:0.5 }}>
+              Server warming up — first request may take 30s…
+            </span>
+          </div>
+        )}
 
         {/* ── NavBar ─────────────────────────────────────────── */}
         <header style={{

@@ -1450,7 +1450,7 @@ export default function CodeLens() {
           box-shadow:0 2px 0 rgba(0,0,0,0.35),0 4px 20px rgba(0,212,255,0.25) !important;
         }
         .sign-in-btn:hover { background:rgba(255,255,255,0.1) !important; transform:translateY(-1px); }
-        .nav-link { background:none; border:none; cursor:pointer; padding:8px 14px; border-radius:10px; font-size:13px; font-weight:600; font-family:'Space Grotesk',sans-serif; transition:all 0.2s; color:rgba(255,255,255,0.45); letter-spacing:0.1px; position:relative; }
+        .nav-link { background:none; border:none; cursor:pointer; padding:8px 14px; border-radius:10px; font-size:13px; font-weight:600; font-family:'Space Grotesk',sans-serif; transition:all 0.2s; color:rgba(255,255,255,0.45); letter-spacing:0.1px; position:relative; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
         .nav-link:hover { color:rgba(255,255,255,0.9); background:rgba(255,255,255,0.05); }
         .nav-link.active { color:#00D4FF; background:rgba(0,212,255,0.08); }
         .nav-link.active::after { content:''; position:absolute; bottom:2px; left:50%; transform:translateX(-50%); width:20px; height:2px; background:#00D4FF; border-radius:2px; box-shadow:0 0 8px rgba(0,212,255,0.6); }
@@ -1459,7 +1459,7 @@ export default function CodeLens() {
         .card-hover:hover { transform:translateY(-6px); box-shadow:0 20px 50px rgba(0,0,0,0.5) !important; }
         .hamburger { background:none; border:none; cursor:pointer; padding:6px; border-radius:8px; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; transition:all 0.2s; }
         .hamburger:hover { background:rgba(255,255,255,0.06); }
-        .page-scroll { overflow-y:auto; flex:1; }
+        .page-scroll { overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
         .page-scroll::-webkit-scrollbar { width:4px; }
         .page-scroll::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.07); border-radius:3px; }
       `}</style>
@@ -1628,12 +1628,13 @@ export default function CodeLens() {
                 { key:"contact",  label:"Contact",      icon:"✉" },
               ].map(({ key, label, icon }) => (
                 <button key={key} onClick={() => { setActivePage(key); setMobileMenuOpen(false); }} style={{
-                  display:"flex", alignItems:"center", gap:12, padding:"11px 14px", borderRadius:12,
+                  display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderRadius:12,
                   background: activePage === key ? "rgba(0,212,255,0.08)" : "rgba(255,255,255,0.025)",
                   border:`1px solid ${activePage === key ? "rgba(0,212,255,0.22)" : "rgba(255,255,255,0.06)"}`,
                   color: activePage === key ? T.cyan : "rgba(255,255,255,0.65)",
-                  fontSize:14, fontWeight:600, fontFamily:"'Space Grotesk',sans-serif",
+                  fontSize:15, fontWeight:600, fontFamily:"'Space Grotesk',sans-serif",
                   cursor:"pointer", transition:"all 0.2s", textAlign:"left",
+                  width:"100%", minHeight:52, touchAction:"manipulation", WebkitTapHighlightColor:"transparent",
                 }}>
                   <span style={{ fontSize:16, width:22, textAlign:"center" }}>{icon}</span>
                   {label}

@@ -127,6 +127,39 @@ def _get_openrouter_client() -> Optional[OpenAI]:
 def _is_rate_limit(err: str) -> bool:
     return "429" in err or "rate_limit_exceeded" in err.lower()
 
+# ─── Token Usage Tracking ──────────────────────────────────────────────
+# Tracks tokens consumed per provider since last server restart.
+# Resets automatically every 24 h (matches Groq's daily window).
+
+_DAILY_LIMITS = {
+    "groq":       100_000,
+    "cerebras": 1_000_000,
+    "openrouter":    None,   # upstream-dependent; no hard limit to track
+}
+
+_usage_counters: dict = {
+    "groq":       {"tokens": 0, "reset_at": None},
+    "cerebras":   {"tokens": 0, "reset_at": None},
+    "openrouter": {"tokens": 0, "reset_at": None},
+}
+
+def _record_usage(provider: str, response) -> None:
+    """Accumulate token counts from an API response object."""
+    try:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return
+        tokens = getattr(usage, "total_tokens", 0) or 0
+        entry = _usage_counters[provider]
+        now = datetime.utcnow()
+        # Reset counter if 24 h have passed
+        if entry["reset_at"] is None or now >= entry["reset_at"]:
+            entry["tokens"] = 0
+            entry["reset_at"] = now + timedelta(hours=24)
+        entry["tokens"] += tokens
+    except Exception:
+        pass
+
 def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: float = 0) -> str:
     """Call Cerebras (2000 TPS) → Groq → OpenRouter, falling back on any error."""
     # ── 1. Cerebras — fastest (2000 TPS, 1M tokens/day) ───────────────
@@ -138,6 +171,7 @@ def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: fl
                 model=cb_model, messages=messages,
                 max_tokens=max_tokens, temperature=temperature,
             )
+            _record_usage("cerebras", response)
             return response.choices[0].message.content.strip()
         except Exception as e:
             logger.warning(f'"event":"cerebras_error","error":"{str(e)[:120]}","action":"trying_groq"')
@@ -148,6 +182,7 @@ def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: fl
             model=model, messages=messages,
             max_tokens=max_tokens, temperature=temperature,
         )
+        _record_usage("groq", response)
         return response.choices[0].message.content.strip()
     except Exception as e:
         if not _is_rate_limit(str(e)):
@@ -163,6 +198,7 @@ def call_llm(model: str, messages: list, max_tokens: int = 8000, temperature: fl
             model=fb_model, messages=messages,
             max_tokens=max_tokens, temperature=temperature,
         )
+        _record_usage("openrouter", response)
         return response.choices[0].message.content.strip()
 
     raise HTTPException(
@@ -572,6 +608,27 @@ async def fetch_github_file(repo_url: str, file_path: Optional[str] = None) -> d
 @app.get("/health")
 async def health_check():
     return {"status": "ok", "service": "CodeLens API", "version": "2.0.0"}
+
+@app.get("/usage")
+async def get_usage():
+    """Return token usage per provider with % of daily limit consumed."""
+    result = {}
+    for provider, entry in _usage_counters.items():
+        limit = _DAILY_LIMITS[provider]
+        used  = entry["tokens"]
+        pct   = round(used / limit * 100, 1) if limit else None
+        resets_in = None
+        if entry["reset_at"]:
+            secs = max(0, (entry["reset_at"] - datetime.utcnow()).total_seconds())
+            resets_in = f"{int(secs // 3600)}h {int((secs % 3600) // 60)}m"
+        result[provider] = {
+            "used":       used,
+            "limit":      limit,
+            "pct_used":   pct,
+            "resets_in":  resets_in,
+            "warning":    pct is not None and pct >= 80,
+        }
+    return result
 
 @app.get("/providers")
 async def check_providers():

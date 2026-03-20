@@ -426,6 +426,7 @@ export default function CodeLens() {
   const [activePage, setActivePage]       = useState("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [faqOpenIdx, setFaqOpenIdx]         = useState(null);
+  const [usageData, setUsageData]           = useState(null);
 
   // ── History ───────────────────────────────────────────────────────
   const [analysisHistory, setAnalysisHistory] = useState(() => {
@@ -478,6 +479,15 @@ export default function CodeLens() {
   }, []);
 
   useEffect(() => { if (analysis && isMobile) setMobilePanel("analysis"); }, [analysis]);
+
+  // ── Token usage polling (every 2 min) ─────────────────────────────
+  useEffect(() => {
+    const fetchUsage = () =>
+      fetch(`${API_BASE}/usage`).then(r => r.json()).then(setUsageData).catch(() => {});
+    fetchUsage();
+    const id = setInterval(fetchUsage, 120_000);
+    return () => clearInterval(id);
+  }, []);
 
   const handleAnalyze = async () => {
     if (!code.trim()) return;
@@ -1475,6 +1485,36 @@ export default function CodeLens() {
                 ))}
               </nav>
             )}
+
+            {/* Token usage indicator — desktop only */}
+            {!isMobile && usageData && (() => {
+              const providers = [
+                { key:"groq",     label:"Groq",     color:"#00D4FF" },
+                { key:"cerebras", label:"Cerebras", color:"#8B5CF6" },
+              ];
+              return (
+                <div style={{ display:"flex", gap:8, alignItems:"center" }}>
+                  {providers.map(({ key, label, color }) => {
+                    const d = usageData[key];
+                    if (!d || d.limit === null) return null;
+                    const pct = d.pct_used ?? 0;
+                    const barColor = pct >= 90 ? "#FF2D78" : pct >= 75 ? "#FF8C00" : pct >= 50 ? "#FFD700" : color;
+                    return (
+                      <div key={key} title={`${label}: ${d.used.toLocaleString()} / ${d.limit.toLocaleString()} tokens used (${pct}%)\nResets in: ${d.resets_in ?? "—"}`}
+                        style={{ display:"flex", flexDirection:"column", gap:3, cursor:"default" }}>
+                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", gap:6 }}>
+                          <span style={{ fontSize:9, color:"rgba(255,255,255,0.35)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:0.5 }}>{label}</span>
+                          <span style={{ fontSize:9, color: barColor, fontFamily:"'JetBrains Mono',monospace", fontWeight:700 }}>{pct}%</span>
+                        </div>
+                        <div style={{ width:64, height:3, borderRadius:2, background:"rgba(255,255,255,0.08)" }}>
+                          <div style={{ width:`${Math.min(pct,100)}%`, height:"100%", borderRadius:2, background:barColor, transition:"width 0.5s ease" }}/>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
 
             {/* Right controls */}
             <div style={{ display:"flex", alignItems:"center", gap:isMobile ? 8 : 10 }}>

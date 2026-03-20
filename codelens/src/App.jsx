@@ -1252,7 +1252,7 @@ export default function CodeLens() {
       },
       {
         q: "How do I report a bug or request a feature?",
-        a: "Head to the Contact page and send us a message, or email hello@axonlattice.dev directly. For bug reports, include the code snippet that caused the issue (you can redact sensitive parts) and describe what you expected vs. what happened. Feature requests are very welcome — we prioritise based on user feedback.",
+        a: "Head to the Contact page and send us a message, or email axonlattice@gmail.com directly. For bug reports, include the code snippet that caused the issue (you can redact sensitive parts) and describe what you expected vs. what happened. Feature requests are very welcome — we prioritise based on user feedback.",
       },
     ];
     return (
@@ -1314,8 +1314,8 @@ export default function CodeLens() {
           {/* Contact cards */}
           <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:16, marginBottom:32 }}>
             {[
-              { icon:"✉", label:"Email",   value:"hello@axonlattice.dev",     color:T.cyan,    href:"mailto:hello@axonlattice.dev" },
-              { icon:"🐙", label:"GitHub",  value:"github.com/axonlattice",    color:"#fff",    href:"https://github.com" },
+              { icon:"✉", label:"Email",   value:"axonlattice@gmail.com",          color:T.cyan, href:"mailto:axonlattice@gmail.com" },
+              { icon:"🐙", label:"GitHub",  value:"github.com/Kamaumbugua-dev",    color:"#fff",  href:"https://github.com/Kamaumbugua-dev" },
             ].map(({ icon, label, value, color, href }) => (
               <a key={label} href={href} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
                 <div className="card-hover" style={{
@@ -1778,8 +1778,8 @@ export default function CodeLens() {
                   <p style={{ fontSize:12, color:"rgba(255,255,255,0.28)", lineHeight:1.85, maxWidth:280, marginBottom:18 }}>Predictive code intelligence powered by AI. Detect vulnerabilities, bugs, and performance issues before they reach production.</p>
                   <div style={{ display:"flex", gap:10 }}>
                     {[
-                      { label:"GitHub", href:"https://github.com/Kamaumbugua-dev/CODELENS" },
-                      { label:"Email",  href:"mailto:hello@axonlattice.dev" },
+                      { label:"GitHub", href:"https://github.com/Kamaumbugua-dev" },
+                      { label:"Email",  href:"mailto:axonlattice@gmail.com" },
                     ].map(({ label, href }) => (
                       <a key={label} href={href} target="_blank" rel="noreferrer" style={{ fontSize:11, color:"rgba(255,255,255,0.3)", textDecoration:"none", padding:"5px 12px", borderRadius:8, border:"1px solid rgba(255,255,255,0.08)", transition:"all 0.2s", fontFamily:"'JetBrains Mono',monospace" }}
                         onMouseEnter={e => { e.currentTarget.style.color=T.cyan; e.currentTarget.style.borderColor="rgba(0,212,255,0.3)"; }}

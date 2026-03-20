@@ -1302,7 +1302,36 @@ export default function CodeLens() {
   };
 
   // ─── Contact Page ─────────────────────────────────────────────────
+  const [contactForm, setContactForm]       = useState({ name:"", email:"", message:"" });
+  const [contactSending, setContactSending] = useState(false);
+  const [contactStatus, setContactStatus]   = useState(null); // "sent" | "error" | null
+
+  const handleContactSubmit = async () => {
+    if (!contactForm.name.trim() || !contactForm.email.trim() || !contactForm.message.trim()) {
+      setContactStatus({ type:"error", text:"Please fill in all fields." });
+      return;
+    }
+    setContactSending(true);
+    setContactStatus(null);
+    try {
+      const res = await fetch(`${API_BASE}/contact`, {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify(contactForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send.");
+      setContactStatus({ type:"sent", text:"Message sent! We'll get back to you soon." });
+      setContactForm({ name:"", email:"", message:"" });
+    } catch (e) {
+      setContactStatus({ type:"error", text: e.message });
+    } finally {
+      setContactSending(false);
+    }
+  };
+
   const renderContactPage = () => {
+    const inputStyle = { padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none" };
     return (
       <div className="page-scroll" style={{ padding:isMobile ? "28px 16px" : "40px 48px" }}>
         <div style={{ maxWidth:700, margin:"0 auto" }}>
@@ -1314,16 +1343,11 @@ export default function CodeLens() {
           {/* Contact cards */}
           <div style={{ display:"grid", gridTemplateColumns:isMobile ? "1fr" : "1fr 1fr", gap:16, marginBottom:32 }}>
             {[
-              { icon:"✉", label:"Email",   value:"axonlattice@gmail.com",          color:T.cyan, href:"mailto:axonlattice@gmail.com" },
-              { icon:"🐙", label:"GitHub",  value:"github.com/Kamaumbugua-dev",    color:"#fff",  href:"https://github.com/Kamaumbugua-dev" },
+              { icon:"✉", label:"Email",   value:"axonlattice@gmail.com",       color:T.cyan, href:"mailto:axonlattice@gmail.com" },
+              { icon:"🐙", label:"GitHub",  value:"github.com/Kamaumbugua-dev", color:"#fff",  href:"https://github.com/Kamaumbugua-dev" },
             ].map(({ icon, label, value, color, href }) => (
               <a key={label} href={href} target="_blank" rel="noreferrer" style={{ textDecoration:"none" }}>
-                <div className="card-hover" style={{
-                  padding:"22px 24px", borderRadius:18,
-                  background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))",
-                  border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(20px)",
-                  boxShadow:"0 4px 20px rgba(0,0,0,0.3)", display:"flex", alignItems:"center", gap:16,
-                }}>
+                <div className="card-hover" style={{ padding:"22px 24px", borderRadius:18, background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))", border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(20px)", boxShadow:"0 4px 20px rgba(0,0,0,0.3)", display:"flex", alignItems:"center", gap:16 }}>
                   <div style={{ width:44, height:44, borderRadius:13, background:`${color}18`, border:`1px solid ${color}25`, display:"flex", alignItems:"center", justifyContent:"center", fontSize:20, flexShrink:0 }}>{icon}</div>
                   <div>
                     <div style={{ fontSize:10, color:"rgba(255,255,255,0.3)", fontFamily:"'JetBrains Mono',monospace", letterSpacing:2, marginBottom:4 }}>{label.toUpperCase()}</div>
@@ -1337,14 +1361,33 @@ export default function CodeLens() {
           <div style={{ padding:"32px", borderRadius:24, background:"linear-gradient(145deg,rgba(255,255,255,0.04),rgba(255,255,255,0.01))", border:"1px solid rgba(255,255,255,0.08)", backdropFilter:"blur(30px)" }}>
             <h3 style={{ fontSize:16, fontWeight:800, fontFamily:"'Outfit',sans-serif", color:"rgba(255,255,255,0.8)", marginBottom:20 }}>Send a Message</h3>
             <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
-              <input placeholder="Your name" style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none" }}
+              <input placeholder="Your name" value={contactForm.name}
+                onChange={e => setContactForm(f => ({ ...f, name:e.target.value }))}
+                style={inputStyle}
                 onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
-              <input placeholder="Your email" style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none" }}
+              <input placeholder="Your email" value={contactForm.email} type="email"
+                onChange={e => setContactForm(f => ({ ...f, email:e.target.value }))}
+                style={inputStyle}
                 onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
-              <textarea placeholder="Your message…" rows={5} style={{ padding:"13px 16px", borderRadius:12, background:"rgba(255,255,255,0.04)", border:"1px solid rgba(255,255,255,0.09)", color:"rgba(255,255,255,0.8)", fontSize:13, fontFamily:"'Space Grotesk',sans-serif", outline:"none", resize:"vertical" }}
+              <textarea placeholder="Your message…" rows={5} value={contactForm.message}
+                onChange={e => setContactForm(f => ({ ...f, message:e.target.value }))}
+                style={{ ...inputStyle, resize:"vertical" }}
                 onFocus={e => e.target.style.borderColor="rgba(0,212,255,0.35)"} onBlur={e => e.target.style.borderColor="rgba(255,255,255,0.09)"}/>
-              <button style={{ padding:"13px", borderRadius:14, border:"none", cursor:"pointer", background:"linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)", color:"#fff", fontSize:14, fontWeight:800, fontFamily:"'Outfit',sans-serif", boxShadow:"0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.25)" }}
-                onClick={() => setError("Message sent! We'll be in touch soon.")}>Send Message →</button>
+              {contactStatus && (
+                <div style={{ padding:"11px 16px", borderRadius:10, fontSize:13, fontWeight:600, fontFamily:"'Space Grotesk',sans-serif",
+                  background: contactStatus.type === "sent" ? "rgba(0,212,100,0.1)" : "rgba(255,45,120,0.1)",
+                  border: `1px solid ${contactStatus.type === "sent" ? "rgba(0,212,100,0.25)" : "rgba(255,45,120,0.25)"}`,
+                  color: contactStatus.type === "sent" ? "#00D464" : "#FF2D78" }}>
+                  {contactStatus.text}
+                </div>
+              )}
+              <button disabled={contactSending} onClick={handleContactSubmit}
+                style={{ padding:"13px", borderRadius:14, border:"none", cursor: contactSending ? "wait" : "pointer",
+                  background: contactSending ? "rgba(255,255,255,0.05)" : "linear-gradient(135deg,#00D4FF 0%,#7C3AED 100%)",
+                  color: contactSending ? "rgba(255,255,255,0.3)" : "#fff", fontSize:14, fontWeight:800,
+                  fontFamily:"'Outfit',sans-serif", boxShadow: contactSending ? "none" : "0 4px 0 rgba(0,0,0,0.35),0 8px 30px rgba(0,212,255,0.25)" }}>
+                {contactSending ? "Sending…" : "Send Message →"}
+              </button>
             </div>
           </div>
         </div>

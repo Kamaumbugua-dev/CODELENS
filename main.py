@@ -10,7 +10,10 @@ import re
 import time
 import logging
 import uuid
+import smtplib
 import httpx
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -325,6 +328,11 @@ class FixRequest(BaseModel):
     language: str
     issues: List[Any]
 
+class ContactRequest(BaseModel):
+    name: str
+    email: str
+    message: str
+
 # ─── Language Detection ───────────────────────────────────────────────
 
 LANGUAGE_HINTS = {
@@ -629,6 +637,45 @@ async def get_usage():
             "warning":    pct is not None and pct >= 80,
         }
     return result
+
+@app.post("/contact")
+@limiter.limit("5/hour")
+async def contact(request: Request, body: ContactRequest):
+    """Send a contact form message to axonlattice@gmail.com via Gmail SMTP."""
+    if not body.name.strip() or not body.email.strip() or not body.message.strip():
+        raise HTTPException(status_code=400, detail="All fields are required.")
+
+    gmail_pass = os.environ.get("GMAIL_APP_PASSWORD")
+    if not gmail_pass:
+        raise HTTPException(status_code=503, detail="Email service not configured.")
+
+    GMAIL_USER = "axonlattice@gmail.com"
+
+    msg = MIMEMultipart("alternative")
+    msg["From"]    = GMAIL_USER
+    msg["To"]      = GMAIL_USER
+    msg["Subject"] = f"CodeLens Contact: {body.name}"
+    msg["Reply-To"] = body.email
+
+    text = (
+        f"Name:    {body.name}\n"
+        f"Email:   {body.email}\n\n"
+        f"Message:\n{body.message}"
+    )
+    msg.attach(MIMEText(text, "plain"))
+
+    try:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=10) as server:
+            server.starttls()
+            server.login(GMAIL_USER, gmail_pass)
+            server.send_message(msg)
+        logger.info(f'"event":"contact_sent","from":"{body.email}"')
+        return {"success": True}
+    except smtplib.SMTPAuthenticationError:
+        raise HTTPException(status_code=503, detail="Email authentication failed. Check GMAIL_APP_PASSWORD.")
+    except Exception as e:
+        logger.error(f'"event":"contact_error","error":"{str(e)}"')
+        raise HTTPException(status_code=500, detail="Failed to send message. Please email us directly.")
 
 @app.get("/providers")
 async def check_providers():

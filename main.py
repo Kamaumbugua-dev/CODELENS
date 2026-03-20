@@ -292,12 +292,15 @@ class FixRequest(BaseModel):
 # ─── Language Detection ───────────────────────────────────────────────
 
 LANGUAGE_HINTS = {
-    "python":     [r"def \w+\(", r"import \w+", r"class \w+:", r"print\(", r"self\."],
+    "python":     [r"def \w+\(", r"class \w+:", r"self\.", r"elif ", r"__init__"],
+    "kotlin":     [r"fun \w+\(", r"val \w+", r"var \w+", r"data class", r"println\(", r"\?\."],
     "javascript": [r"const \w+", r"let \w+", r"function \w+", r"=>", r"console\.log"],
     "typescript": [r"interface \w+", r"type \w+", r": string", r": number", r"<\w+>"],
     "java":       [r"public class", r"public static void", r"System\.out", r"import java\."],
     "go":         [r"func \w+\(", r"package \w+", r"fmt\.", r"import \("],
     "rust":       [r"fn \w+\(", r"let mut", r"impl \w+", r"use \w+::", r"pub fn"],
+    "swift":      [r"func \w+\(", r"var \w+:", r"let \w+:", r"guard ", r"UIViewController"],
+    "csharp":     [r"namespace \w+", r"using System", r"public class", r"static void Main", r"Console\."],
 }
 
 def detect_language(code: str, filename: Optional[str] = None) -> str:
@@ -307,6 +310,7 @@ def detect_language(code: str, filename: Optional[str] = None) -> str:
             ".jsx": "javascript", ".tsx": "typescript", ".java": "java",
             ".go": "go", ".rs": "rust", ".rb": "ruby", ".php": "php",
             ".cs": "csharp", ".cpp": "cpp", ".c": "c", ".swift": "swift",
+            ".kt": "kotlin", ".kts": "kotlin",
         }
         for ext, lang in ext_map.items():
             if filename.endswith(ext):
@@ -398,7 +402,8 @@ ABSOLUTE RULES — violating any of these is a failure:
 2. FIX EVERY ISSUE: Every issue in the provided list must be fixed. Do not skip, defer, or partially fix anything.
 3. ALSO SELF-REVIEW: After applying all listed fixes, scan your own output for any remaining issues not in the list and fix those too.
 4. PRESERVE FUNCTIONALITY: Do not remove business logic, change function signatures arbitrarily, or alter correct behaviour.
-5. ANNOTATION: On each line you change, add an inline comment — # FIX: <brief reason> (Python/Ruby) or // FIX: <brief reason> (JS/TS/Java/Go/C/C++) — immediately after the changed code.
+5. ANNOTATION: On each line you change, add an inline comment — # FIX: <brief reason> (Python/Ruby) or // FIX: <brief reason> (JS/TS/Java/Go/C/C++/Kotlin) — immediately after the changed code.
+6. COMPILABLE OUTPUT: The fixed code MUST compile and run without errors. Do not introduce new compilation errors. For Kotlin: val properties cannot be reassigned — use copy() or change to var. For Kotlin: you cannot synchronize on primitives (Int, Long) — use AtomicInteger or a dedicated lock object instead.
 
 WHAT GOOD FIXES LOOK LIKE:
 - SQL injection  → parameterised query:  cursor.execute("SELECT * FROM users WHERE id=?", (uid,))  # FIX: parameterised query prevents SQL injection

@@ -1457,7 +1457,8 @@ export default function CodeLens() {
         .page-section { animation:fadeUp 0.5s ease both; }
         .card-hover { transition:transform 0.25s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.25s; }
         .card-hover:hover { transform:translateY(-6px); box-shadow:0 20px 50px rgba(0,0,0,0.5) !important; }
-        .hamburger { background:none; border:none; cursor:pointer; padding:6px; border-radius:8px; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; transition:all 0.2s; }
+        button { touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
+        .hamburger { background:none; border:none; cursor:pointer; padding:10px; border-radius:8px; display:flex; flex-direction:column; gap:5px; align-items:center; justify-content:center; transition:all 0.2s; min-width:44px; min-height:44px; touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
         .hamburger:hover { background:rgba(255,255,255,0.06); }
         .page-scroll { overflow-y:auto; flex:1; -webkit-overflow-scrolling:touch; overscroll-behavior:contain; }
         .page-scroll::-webkit-scrollbar { width:4px; }
@@ -1509,7 +1510,7 @@ export default function CodeLens() {
         }}>
           <div style={{ padding:`0 ${isMobile ? 14 : 28}px`, height:HEADER_H, display:"flex", alignItems:"center", justifyContent:"space-between" }}>
             {/* Brand */}
-            <button onClick={() => { setActivePage("home"); setMobileMenuOpen(false); }} style={{ display:"flex", alignItems:"center", gap:isMobile ? 10 : 12, background:"none", border:"none", cursor:"pointer", padding:0 }}>
+            <button onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setActivePage("home"); setMobileMenuOpen(false); }} style={{ display:"flex", alignItems:"center", gap:isMobile ? 10 : 12, background:"none", border:"none", cursor:"pointer", padding:isMobile ? "8px 4px" : 0, touchAction:"manipulation", WebkitTapHighlightColor:"transparent" }}>
               <div style={{
                 width:isMobile ? 34 : 38, height:isMobile ? 34 : 38, borderRadius:isMobile ? 11 : 12,
                 background:"linear-gradient(135deg,rgba(0,212,255,0.15),rgba(139,92,246,0.15))",
@@ -1590,21 +1591,25 @@ export default function CodeLens() {
                 }}>{loading ? "Scanning..." : "Analyze →"}</button>
               )}
               {!isSignedIn ? (
-                <button className="sign-in-btn" onClick={() => setShowAuthModal(true)} style={{
+                <button className="sign-in-btn" onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setShowAuthModal(true); }} style={{
                   padding:isMobile ? "7px 13px" : "8px 18px", borderRadius:22,
                   border:"1px solid rgba(0,212,255,0.28)", cursor:"pointer",
-                  background:"rgba(0,212,255,0.06)", backdropFilter:"blur(20px)",
+                  background:"rgba(0,212,255,0.06)",
+                  backdropFilter: isMobile ? "none" : "blur(20px)",
                   color:T.cyan, fontSize:isMobile ? 12 : 13, fontWeight:700,
                   fontFamily:"'Outfit',sans-serif", transition:"all 0.2s",
+                  touchAction:"manipulation", WebkitTapHighlightColor:"transparent",
                   boxShadow:"inset 0 1px 0 rgba(0,212,255,0.12)" }}>Sign In →</button>
               ) : (
                 <UserAvatar user={authUser} onSignOut={handleSignOut} isMobile={isMobile}/>
               )}
               {/* Mobile hamburger */}
               {isMobile && (
-                <button className="hamburger" onClick={() => setMobileMenuOpen(o => !o)}>
+                <button className="hamburger"
+                  onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setMobileMenuOpen(o => !o); }}
+                  style={{ touchAction:"manipulation", WebkitTapHighlightColor:"transparent" }}>
                   {[0,1,2].map(i => (
-                    <div key={i} style={{ width:20, height:2, borderRadius:2, background: mobileMenuOpen && i===1 ? "transparent" : "rgba(255,255,255,0.6)",
+                    <div key={i} style={{ width:22, height:2, borderRadius:2, background: mobileMenuOpen && i===1 ? "transparent" : "rgba(255,255,255,0.75)",
                       transition:"all 0.25s",
                       transform: mobileMenuOpen ? (i===0 ? "rotate(45deg) translate(5px,5px)" : i===2 ? "rotate(-45deg) translate(5px,-5px)" : "none") : "none",
                     }}/>
@@ -1627,7 +1632,9 @@ export default function CodeLens() {
                 { key:"faq",      label:"FAQ",          icon:"?" },
                 { key:"contact",  label:"Contact",      icon:"✉" },
               ].map(({ key, label, icon }) => (
-                <button key={key} onClick={() => { setActivePage(key); setMobileMenuOpen(false); }} style={{
+                <button key={key}
+                  onPointerDown={(e) => { e.currentTarget.releasePointerCapture(e.pointerId); setActivePage(key); setMobileMenuOpen(false); }}
+                  style={{
                   display:"flex", alignItems:"center", gap:12, padding:"14px 16px", borderRadius:12,
                   background: activePage === key ? "rgba(0,212,255,0.08)" : "rgba(255,255,255,0.025)",
                   border:`1px solid ${activePage === key ? "rgba(0,212,255,0.22)" : "rgba(255,255,255,0.06)"}`,
